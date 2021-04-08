@@ -73,10 +73,7 @@ int ksz_switch_register(struct ksz_device *dev,
 			const struct ksz_tag_ops *tag_ops);
 void ksz_switch_remove(struct ksz_device *dev);
 
-int ksz8795_switch_register(struct ksz_device *dev);
 int ksz8895_switch_register(struct ksz_device *dev);
-int ksz8463_switch_register(struct ksz_device *dev);
-int ksz8863_switch_register(struct ksz_device *dev);
 int ksz9477_switch_register(struct ksz_device *dev);
 
 #endif
