@@ -1292,6 +1292,8 @@ static int ksz8895_switch_detect(struct ksz_device *dev)
 	dev->cpu_port = dev->mib_port_cnt - 1;
 	dev->host_mask = (1 << dev->cpu_port);
 
+	dev->chip_series = KSZ_CHIP_8895_SERIES;
+
 	return 0;
 }
 

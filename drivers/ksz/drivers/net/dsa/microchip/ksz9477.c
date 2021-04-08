@@ -1912,6 +1912,8 @@ static int ksz9477_switch_detect(struct ksz_device *dev)
 			KSZ_CHIP_NAME_SIZE);
 	}
 
+	dev->chip_series = KSZ_CHIP_9477_SERIES;
+
 	return 0;
 }
 
