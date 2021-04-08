@@ -1,6 +1,11 @@
 config NET_DSA_MICROCHIP_KSZ_COMMON
 	tristate
 
+config NET_DSA_MICROCHIP_KSZ_SYSFS
+	tristate "Microchip KSZ Series Switch DSA Driver sysfs interface"
+	depends on NET_DSA_MICROCHIP_KSZ_COMMON
+	default y
+
 menuconfig NET_DSA_MICROCHIP_KSZ9477
 	tristate "Microchip KSZ9477 series switch support"
 	depends on NET_DSA

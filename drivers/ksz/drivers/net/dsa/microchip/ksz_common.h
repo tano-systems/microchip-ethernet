@@ -38,13 +38,6 @@ int ksz_port_mdb_del(struct dsa_switch *ds, int port,
 int ksz_enable_port(struct dsa_switch *ds, int port, struct phy_device *phy);
 void ksz_disable_port(struct dsa_switch *ds, int port, struct phy_device *phy);
 
-ssize_t ksz_registers_read(struct file *filp, struct kobject *kobj,
-			   struct bin_attribute *bin_attr, char *buf,
-			   loff_t off, size_t count);
-ssize_t ksz_registers_write(struct file *filp, struct kobject *kobj,
-			    struct bin_attribute *bin_attr, char *buf,
-			    loff_t off, size_t count);
-
 /* Common register access functions */
 
 /* Switch may require register transformation. */

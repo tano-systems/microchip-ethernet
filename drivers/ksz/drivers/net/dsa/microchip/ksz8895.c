@@ -19,43 +19,41 @@
 #include "ksz8895_reg.h"
 #include "ksz_common.h"
 
-static const struct {
-	char string[ETH_GSTRING_LEN];
-} ksz8895_mib_names[TOTAL_SWITCH_COUNTER_NUM] = {
-	{ "rx" },
-	{ "rx_hi" },
-	{ "rx_undersize" },
-	{ "rx_fragments" },
-	{ "rx_oversize" },
-	{ "rx_jabbers" },
-	{ "rx_symbol_err" },
-	{ "rx_crc_err" },
-	{ "rx_align_err" },
-	{ "rx_mac_ctrl" },
-	{ "rx_pause" },
-	{ "rx_bcast" },
-	{ "rx_mcast" },
-	{ "rx_ucast" },
-	{ "rx_64_or_less" },
-	{ "rx_65_127" },
-	{ "rx_128_255" },
-	{ "rx_256_511" },
-	{ "rx_512_1023" },
-	{ "rx_1024_1522" },
-	{ "tx" },
-	{ "tx_hi" },
-	{ "tx_late_col" },
-	{ "tx_pause" },
-	{ "tx_bcast" },
-	{ "tx_mcast" },
-	{ "tx_ucast" },
-	{ "tx_deferred" },
-	{ "tx_total_col" },
-	{ "tx_exc_col" },
-	{ "tx_single_col" },
-	{ "tx_mult_col" },
-	{ "rx_discards" },
-	{ "tx_discards" },
+static const struct ksz_mib_info ksz8895_mib_names[TOTAL_SWITCH_COUNTER_NUM] = {
+	{ 0x00, "rx" },
+	{ 0x01, "rx_hi" },
+	{ 0x02, "rx_undersize" },
+	{ 0x03, "rx_fragments" },
+	{ 0x04, "rx_oversize" },
+	{ 0x05, "rx_jabbers" },
+	{ 0x06, "rx_symbol_err" },
+	{ 0x07, "rx_crc_err" },
+	{ 0x08, "rx_align_err" },
+	{ 0x09, "rx_mac_ctrl" },
+	{ 0x0a, "rx_pause" },
+	{ 0x0b, "rx_bcast" },
+	{ 0x0c, "rx_mcast" },
+	{ 0x0d, "rx_ucast" },
+	{ 0x0e, "rx_64_or_less" },
+	{ 0x0f, "rx_65_127" },
+	{ 0x10, "rx_128_255" },
+	{ 0x11, "rx_256_511" },
+	{ 0x12, "rx_512_1023" },
+	{ 0x13, "rx_1024_1522" },
+	{ 0x14, "tx" },
+	{ 0x15, "tx_hi" },
+	{ 0x16, "tx_late_col" },
+	{ 0x17, "tx_pause" },
+	{ 0x18, "tx_bcast" },
+	{ 0x19, "tx_mcast" },
+	{ 0x1a, "tx_ucast" },
+	{ 0x1b, "tx_deferred" },
+	{ 0x1c, "tx_total_col" },
+	{ 0x1d, "tx_exc_col" },
+	{ 0x1e, "tx_single_col" },
+	{ 0x1f, "tx_mult_col" },
+	{ 0x20, "rx_discards" },
+	{ 0x21, "tx_discards" },
 };
 
 static int ksz8895_reset_switch(struct ksz_device *dev)
@@ -1023,7 +1021,8 @@ static void ksz8895_port_setup(struct ksz_device *dev, int port, bool cpu_port)
 	struct ksz_port *p = &dev->ports[port];
 
 	/* enable broadcast storm limit */
-	ksz_port_cfg(dev, port, P_BCAST_STORM_CTRL, PORT_BROADCAST_STORM, true);
+	if (dev->dev_ops->cfg_port_broadcast_storm)
+		dev->dev_ops->cfg_port_broadcast_storm(dev, port, true);
 
 	ksz8895_set_prio_queue(dev, port, 4);
 
@@ -1206,17 +1205,6 @@ static struct dsa_switch_ops ksz8895_switch_ops = {
 };
 
 #define KSZ8895_REGS_SIZE		0x100
-
-static struct bin_attribute ksz8895_registers_attr = {
-	.attr = {
-		.name	= "registers",
-		.mode	= 00600,
-	},
-	.size	= KSZ8895_REGS_SIZE,
-	.read	= ksz_registers_read,
-	.write	= ksz_registers_write,
-};
-
 #define KSZ_CHIP_NAME_SIZE		25
 
 static const char *ksz8895_chip_names[KSZ_CHIP_NAME_SIZE] = {
@@ -1293,6 +1281,7 @@ static int ksz8895_switch_detect(struct ksz_device *dev)
 	dev->host_mask = (1 << dev->cpu_port);
 
 	dev->chip_series = KSZ_CHIP_8895_SERIES;
+	dev->last_port = dev->mib_port_cnt - 1;
 
 	return 0;
 }
@@ -1360,6 +1349,7 @@ static int ksz8895_switch_init(struct ksz_device *dev)
 
 	dev->reg_mib_cnt = SWITCH_COUNTER_NUM;
 	dev->mib_cnt = TOTAL_SWITCH_COUNTER_NUM;
+	dev->mib_names = ksz8895_mib_names;
 
 	i = dev->mib_port_cnt;
 	dev->ports = devm_kzalloc(dev->dev, sizeof(struct ksz_port) * i,
@@ -1382,15 +1372,11 @@ static int ksz8895_switch_init(struct ksz_device *dev)
 		return -ENODEV;
 
 	dev->regs_size = KSZ8895_REGS_SIZE;
-	i = sysfs_create_bin_file(&dev->dev->kobj,
-				  &ksz8895_registers_attr);
-
 	return 0;
 }
 
 static void ksz8895_switch_exit(struct ksz_device *dev)
 {
-	sysfs_remove_bin_file(&dev->dev->kobj, &ksz8895_registers_attr);
 	phy_drivers_unregister(ksz8895_phy_driver,
 			       ARRAY_SIZE(ksz8895_phy_driver));
 	ksz8895_reset_switch(dev);
@@ -1405,6 +1391,111 @@ static int ksz8895_w_switch_mac(struct ksz_device *dev, const u8 *mac_addr)
 static int ksz8895_r_switch_mac(struct ksz_device *dev, u8 *mac_addr)
 {
 	return ksz_get(dev, REG_SW_MAC_ADDR_0, mac_addr, ETH_ALEN);
+}
+
+#define KSZ8895_BROADCAST_STORM_50MS_DIV  7440    /* 144880 * 50 ms */
+#define KSZ8895_BROADCAST_STORM_RATE_MAX  0x7ff
+
+static void ksz8895_cfg_broadcast_storm(struct ksz_device *dev, u8 rate_percent)
+{
+	u16 data16;
+	u32 storm_rate;
+
+	storm_rate = (KSZ8895_BROADCAST_STORM_50MS_DIV * rate_percent) / 100;
+
+	if (storm_rate > KSZ8895_BROADCAST_STORM_RATE_MAX)
+		storm_rate = KSZ8895_BROADCAST_STORM_RATE_MAX;
+
+	/* Set broadcast storm protection rate */
+	ksz_read16(dev, S_REPLACE_VID_CTRL, &data16);
+	data16 &= ~BROADCAST_STORM_RATE;
+	data16 |= storm_rate;
+	ksz_write16(dev, S_REPLACE_VID_CTRL, data16);
+}
+
+static void ksz8895_get_broadcast_storm(struct ksz_device *dev, u8 *rate_percent)
+{
+	u16 data16;
+	ksz_read16(dev, S_REPLACE_VID_CTRL, &data16);
+	data16 &= BROADCAST_STORM_RATE;
+
+	*rate_percent = (u8)(((u32)data16 * 100) / (KSZ8895_BROADCAST_STORM_50MS_DIV));
+
+	if (*rate_percent < 1)
+		*rate_percent = 1;
+}
+
+static void ksz8895_cfg_broadcast_multicast_storm(struct ksz_device *dev, bool enable)
+{
+	ksz_cfg(dev, REG_SW_CTRL_2, MULTICAST_STORM_DISABLE, !enable);
+}
+
+static void ksz8895_get_broadcast_multicast_storm(struct ksz_device *dev, bool *enabled)
+{
+	u8 data8;
+	ksz_read8(dev, REG_SW_CTRL_2, &data8);
+	*enabled = !(data8 & MULTICAST_STORM_DISABLE);
+}
+
+static void ksz8895_cfg_port_broadcast_storm(struct ksz_device *dev, int port, bool enable)
+{
+	ksz_port_cfg(dev, port, P_BCAST_STORM_CTRL, PORT_BROADCAST_STORM, enable);
+}
+
+static void ksz8895_get_port_broadcast_storm(struct ksz_device *dev, int port, bool *enabled)
+{
+	u8 data8;
+	ksz_pread8(dev, port, P_BCAST_STORM_CTRL, &data8);
+	*enabled = !!(data8 & PORT_BROADCAST_STORM);
+}
+
+static void ksz8895_cfg_port_enable(struct ksz_device *dev, int port, bool enable)
+{
+	ksz8895_port_cfg(dev, port, REG_PORT_CTRL_6, PORT_POWER_DOWN, !enable);
+}
+
+static void ksz8895_get_port_enable(struct ksz_device *dev, int port, bool *enabled)
+{
+	u8 data8;
+	ksz_pread8(dev, port, REG_PORT_CTRL_6, &data8);
+	*enabled = !(data8 & PORT_POWER_DOWN);
+}
+
+static void ksz8895_get_port_link(struct ksz_device *dev, int port, struct ksz_port_link *link)
+{
+	u8 data8;
+	ksz_pread8(dev, port, REG_PORT_STATUS_0, &data8);
+
+	if (data8 & PORT_STAT_SPEED_100MBIT)
+		link->speed = 100;
+	else
+		link->speed = 10;
+
+	link->duplex = !!(data8 & PORT_STAT_FULL_DUPLEX);
+	link->link = 0;
+	link->autoneg = 0;
+
+	if (port < dev->phy_port_cnt) {
+		u8 data8;
+
+		ksz_pread8(dev, port, REG_PORT_STATUS_1, &data8);
+		link->link = !!(data8 & PORT_STAT_LINK_GOOD);
+
+		link->autoneg = 1; /* TODO: Fix this */
+	}
+}
+
+static void ksz8895_get_port_stp_state(struct ksz_device *dev, int port, bool *rx, bool *tx, bool *learning)
+{
+	u8 data;
+	ksz_pread8(dev, port, REG_PORT_CTRL_2, &data);
+
+	if (rx)
+		*rx = !!(data & PORT_RX_ENABLE)
+	if (tx)
+		*tx = !!(data & PORT_TX_ENABLE)
+	if (learning)
+		*learning = !(data & PORT_LEARN_DISABLE)
 }
 
 static const struct ksz_dev_ops ksz8895_dev_ops = {
@@ -1427,6 +1518,24 @@ static const struct ksz_dev_ops ksz8895_dev_ops = {
 	.detect = ksz8895_switch_detect,
 	.init = ksz8895_switch_init,
 	.exit = ksz8895_switch_exit,
+
+	/* Port STP states */
+	.get_port_stp_state = ksz8895_get_port_stp_state,
+
+	/* Speed/duplex/autonegotiation */
+	.get_port_link = ksz8895_get_port_link,
+
+	/* Broadcast/multicast storm protection control */
+	.cfg_broadcast_storm = ksz8895_cfg_broadcast_storm,
+	.get_broadcast_storm = ksz8895_get_broadcast_storm,
+	.cfg_broadcast_multicast_storm = ksz8895_cfg_broadcast_multicast_storm,
+	.get_broadcast_multicast_storm = ksz8895_get_broadcast_multicast_storm,
+	.cfg_port_broadcast_storm = ksz8895_cfg_port_broadcast_storm,
+	.get_port_broadcast_storm = ksz8895_get_port_broadcast_storm,
+
+	/* Port enable */
+	.cfg_port_enable = ksz8895_cfg_port_enable,
+	.get_port_enable = ksz8895_get_port_enable,
 };
 
 static void ksz8895_set_tag(struct ksz_device *dev, void *ptr, u8 *addr, int p)

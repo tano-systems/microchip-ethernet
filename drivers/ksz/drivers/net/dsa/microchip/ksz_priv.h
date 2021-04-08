@@ -16,8 +16,21 @@
 #include <linux/phy.h>
 #include <linux/regmap.h>
 
+struct ksz_device;
+
+struct ksz_tag_ops {
+	int (*get_len)(struct ksz_device *dev);
+	int (*get_tag)(struct ksz_device *dev, u8 *tag, int *port);
+	void (*set_tag)(struct ksz_device *dev, void *ptr, u8 *addr, int p);
+};
+
 struct vlan_table {
 	u32 table[3];
+};
+
+struct ksz_mib_info {
+	int index;
+	char string[ETH_GSTRING_LEN];
 };
 
 struct ksz_port_mib {
@@ -48,11 +61,17 @@ enum ksz_chip_series {
 	KSZ_CHIP_9477_SERIES
 };
 
+struct ksz_sysfs;
+
 struct ksz_device {
 	struct dsa_switch *ds;
 	struct ksz_platform_data *pdata;
 	const char *name;
 	struct regmap *regmap[3];
+
+#if defined(CONFIG_NET_DSA_MICROCHIP_KSZ_SYSFS)
+	struct ksz_sysfs *sysfs;
+#endif
 
 	struct mutex stats_mutex;	/* status access */
 	struct mutex alu_mutex;		/* ALU access */
@@ -82,6 +101,8 @@ struct ksz_device {
 	phy_interface_t interface;
 	u32 regs_size;
 	bool phy_errata_9477;
+
+	const struct ksz_mib_info *mib_names;
 
 	struct vlan_table *vlan_cache;
 
@@ -127,6 +148,13 @@ struct alu_struct {
 	u8	mac[ETH_ALEN];
 };
 
+struct ksz_port_link {
+	bool link;
+	int speed;
+	int duplex;
+	int autoneg;
+};
+
 struct ksz_dev_ops {
 	void (*cfg_port_member)(struct ksz_device *dev, int port, u8 member);
 	void (*flush_dyn_mac_table)(struct ksz_device *dev, int port);
@@ -158,6 +186,23 @@ struct ksz_dev_ops {
 	void (*exit)(struct ksz_device *dev);
 	int (*w_switch_mac)(struct ksz_device *dev, const u8 *mac_addr);
 	int (*r_switch_mac)(struct ksz_device *dev, u8 *mac_addr);
+
+	void (*cfg_broadcast_storm)(struct ksz_device *dev, u8 rate_percent);
+	void (*get_broadcast_storm)(struct ksz_device *dev, u8 *rate_percent);
+	void (*cfg_broadcast_multicast_storm)(struct ksz_device *dev, bool enable);
+	void (*get_broadcast_multicast_storm)(struct ksz_device *dev, bool *enabled);
+	void (*cfg_port_broadcast_storm)(struct ksz_device *dev, int port, bool enable);
+	void (*get_port_broadcast_storm)(struct ksz_device *dev, int port, bool *enabled);
+
+	void (*cfg_mtu)(struct ksz_device *dev, u16 mtu);
+	void (*get_mtu)(struct ksz_device *dev, u16 *mtu);
+
+	void (*cfg_port_enable)(struct ksz_device *dev, int port, bool enable);
+	void (*get_port_enable)(struct ksz_device *dev, int port, bool *enabled);
+
+	void (*get_port_link)(struct ksz_device *dev, int port, struct ksz_port_link *link);
+
+	void (*get_port_stp_state)(struct ksz_device *dev, int port, bool *rx, bool *tx, bool *learning);
 };
 
 struct ksz_device *ksz_switch_alloc(struct device *base);
@@ -168,5 +213,24 @@ void ksz_switch_remove(struct ksz_device *dev);
 
 int ksz8895_switch_register(struct ksz_device *dev);
 int ksz9477_switch_register(struct ksz_device *dev);
+
+#if defined(CONFIG_NET_DSA_MICROCHIP_KSZ_SYSFS)
+
+int ksz_sysfs_init(struct ksz_device *dev);
+int ksz_sysfs_remove(struct ksz_device *dev);
+
+#else
+
+static inline int ksz_sysfs_init(struct ksz_device *dev)
+{
+	return 0;
+}
+
+static inline int ksz_sysfs_remove(struct ksz_device *dev)
+{
+	return 0;
+}
+
+#endif
 
 #endif

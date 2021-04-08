@@ -412,68 +412,6 @@ void ksz_disable_port(struct dsa_switch *ds, int port, struct phy_device *phy)
 }
 EXPORT_SYMBOL_GPL(ksz_disable_port);
 
-ssize_t ksz_registers_read(struct file *filp, struct kobject *kobj,
-			   struct bin_attribute *bin_attr, char *buf,
-			   loff_t off, size_t count)
-{
-	size_t i;
-	u32 reg;
-	struct device *dev;
-	struct ksz_device *swdev;
-
-	dev = container_of(kobj, struct device, kobj);
-	swdev = dev_get_drvdata(dev);
-
-	if (unlikely(off >= swdev->regs_size))
-		return 0;
-
-	if ((off + count) >= swdev->regs_size)
-		count = swdev->regs_size - off;
-
-	if (unlikely(!count))
-		return count;
-
-	reg = off;
-	if (swdev->dev_ops->get)
-		i = swdev->dev_ops->get(swdev, reg, buf, count);
-	else
-		i = regmap_bulk_read(swdev->regmap[0], reg, buf, count);
-	i = count;
-	return i;
-}
-EXPORT_SYMBOL_GPL(ksz_registers_read);
-
-ssize_t ksz_registers_write(struct file *filp, struct kobject *kobj,
-			    struct bin_attribute *bin_attr, char *buf,
-			    loff_t off, size_t count)
-{
-	size_t i;
-	u32 reg;
-	struct device *dev;
-	struct ksz_device *swdev;
-
-	dev = container_of(kobj, struct device, kobj);
-	swdev = dev_get_drvdata(dev);
-
-	if (unlikely(off >= swdev->regs_size))
-		return -EFBIG;
-
-	if ((off + count) >= swdev->regs_size)
-		count = swdev->regs_size - off;
-
-	if (unlikely(!count))
-		return count;
-
-	reg = off;
-	if (swdev->dev_ops->set)
-		i = swdev->dev_ops->set(swdev, reg, buf, count);
-	else
-		i = regmap_bulk_write(swdev->regmap[0], reg, buf, count);
-	i = count;
-	return i;
-}
-EXPORT_SYMBOL_GPL(ksz_registers_write);
-
 struct ksz_device *ksz_switch_alloc(struct device *base)
 {
 	struct dsa_switch *ds;
@@ -725,12 +663,16 @@ int ksz_switch_register(struct ksz_device *dev,
 
 	dev_info(dev->dev, "DSA switch registered\n");
 
+	ksz_sysfs_init(dev);
+
 	return 0;
 }
 EXPORT_SYMBOL(ksz_switch_register);
 
 void ksz_switch_remove(struct ksz_device *dev)
 {
+	ksz_sysfs_remove(dev);
+
 	/* timer started */
 	if (dev->mib_read_timer.expires) {
 		del_timer_sync(&dev->mib_read_timer);

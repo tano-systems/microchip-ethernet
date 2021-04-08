@@ -26,10 +26,7 @@
 /* overrides flags */
 #define PTP_TAG				BIT(0)
 
-static const struct {
-	int index;
-	char string[ETH_GSTRING_LEN];
-} ksz9477_mib_names[TOTAL_SWITCH_COUNTER_NUM] = {
+static const struct ksz_mib_info ksz9477_mib_names[TOTAL_SWITCH_COUNTER_NUM] = {
 	{ 0x00, "rx_hi" },
 	{ 0x01, "rx_undersize" },
 	{ 0x02, "rx_fragments" },
@@ -67,6 +64,18 @@ static const struct {
 	{ 0x82, "rx_discards" },
 	{ 0x83, "tx_discards" },
 };
+
+static void ksz9477_cfg16(struct ksz_device *dev, u32 addr, u32 bits, bool set)
+{
+	regmap_update_bits(dev->regmap[1], addr, bits, set ? bits : 0);
+}
+
+static void ksz9477_port_cfg16(struct ksz_device *dev, int port, int offset,
+			       u32 bits, bool set)
+{
+	regmap_update_bits(dev->regmap[1], PORT_CTRL_ADDR(port, offset), bits,
+			   set ? bits : 0);
+}
 
 static void ksz9477_cfg32(struct ksz_device *dev, u32 addr, u32 bits, bool set)
 {
@@ -202,7 +211,6 @@ static void ksz9477_write_table(struct ksz_device *dev, u32 *table)
 static int ksz9477_reset_switch(struct ksz_device *dev)
 {
 	u8 data8;
-	u16 data16;
 	u32 data32;
 
 	/* reset switch */
@@ -227,10 +235,8 @@ static int ksz9477_reset_switch(struct ksz_device *dev)
 	ksz_read32(dev, REG_SW_PORT_INT_STATUS__4, &data32);
 
 	/* set broadcast storm protection 10% rate */
-	ksz_read16(dev, REG_SW_MAC_CTRL_2, &data16);
-	data16 &= ~BROADCAST_STORM_RATE;
-	data16 |= (BROADCAST_STORM_VALUE * BROADCAST_STORM_PROT_RATE) / 100;
-	ksz_write16(dev, REG_SW_MAC_CTRL_2, data16);
+	if (dev->dev_ops->cfg_broadcast_storm)
+		dev->dev_ops->cfg_broadcast_storm(dev, 10);
 
 	return 0;
 }
@@ -1516,7 +1522,8 @@ static void ksz9477_port_setup(struct ksz_device *dev, int port, bool cpu_port)
 	ksz_port_cfg(dev, port, REG_PORT_MAC_CTRL_1, PORT_BACK_PRESSURE, true);
 
 	/* enable broadcast storm limit */
-	ksz_port_cfg(dev, port, P_BCAST_STORM_CTRL, PORT_BROADCAST_STORM, true);
+	if (dev->dev_ops->cfg_port_broadcast_storm)
+		dev->dev_ops->cfg_port_broadcast_storm(dev, port, true);
 
 	/* disable DiffServ priority */
 	ksz_port_cfg(dev, port, P_PRIO_CTRL, PORT_DIFFSERV_PRIO_ENABLE, false);
@@ -1681,7 +1688,8 @@ static int ksz9477_setup(struct dsa_switch *ds)
 
 	ksz9477_config_cpu_port(ds);
 
-	ksz_cfg(dev, REG_SW_MAC_CTRL_1, MULTICAST_STORM_DISABLE, true);
+	if (dev->dev_ops->cfg_broadcast_multicast_storm)
+		dev->dev_ops->cfg_broadcast_multicast_storm(dev, false);
 
 	/* Required for port partitioning. */
 	ksz9477_cfg32(dev, REG_SW_QM_CTRL__4, UNICAST_VLAN_BOUNDARY,
@@ -1701,7 +1709,10 @@ static int ksz9477_setup(struct dsa_switch *ds)
 
 	/* Enable jumbo frames */
 	ksz_cfg(dev, REG_SW_MAC_CTRL_1, SW_JUMBO_PACKET, true);
-	ksz_write16(dev, REG_SW_MTU__2, 0x2328);
+
+	/* Configure MTU */
+	if (dev->dev_ops->cfg_mtu)
+		dev->dev_ops->cfg_mtu(dev, 0x2328);
 
 	dev_info(ds->dev, "Enabled jumbo frames support\n");
 
@@ -1745,17 +1756,6 @@ static struct dsa_switch_ops ksz9477_switch_ops = {
 };
 
 #define KSZ9477_REGS_SIZE		0x8000
-
-static struct bin_attribute ksz9477_registers_attr = {
-	.attr = {
-		.name	= "registers",
-		.mode	= 00600,
-	},
-	.size	= KSZ9477_REGS_SIZE,
-	.read	= ksz_registers_read,
-	.write	= ksz_registers_write,
-};
-
 #define KSZ_CHIP_NAME_SIZE		25
 
 static const char *ksz9477_chip_names[KSZ_CHIP_NAME_SIZE] = {
@@ -1913,6 +1913,7 @@ static int ksz9477_switch_detect(struct ksz_device *dev)
 	}
 
 	dev->chip_series = KSZ_CHIP_9477_SERIES;
+	dev->last_port = dev->mib_port_cnt - 1;
 
 	return 0;
 }
@@ -2012,6 +2013,7 @@ static int ksz9477_switch_init(struct ksz_device *dev)
 
 	dev->reg_mib_cnt = SWITCH_COUNTER_NUM;
 	dev->mib_cnt = TOTAL_SWITCH_COUNTER_NUM;
+	dev->mib_names = ksz9477_mib_names;
 
 	i = dev->mib_port_cnt;
 	dev->ports = devm_kzalloc(dev->dev, sizeof(struct ksz_port) * i,
@@ -2034,15 +2036,11 @@ static int ksz9477_switch_init(struct ksz_device *dev)
 		return -ENODEV;
 
 	dev->regs_size = KSZ9477_REGS_SIZE;
-	i = sysfs_create_bin_file(&dev->dev->kobj,
-				  &ksz9477_registers_attr);
-
 	return 0;
 }
 
 static void ksz9477_switch_exit(struct ksz_device *dev)
 {
-	sysfs_remove_bin_file(&dev->dev->kobj, &ksz9477_registers_attr);
 	phy_drivers_unregister(ksz9477_phy_driver,
 			       ARRAY_SIZE(ksz9477_phy_driver));
 	ksz9477_reset_switch(dev);
@@ -2056,6 +2054,131 @@ static int ksz9477_w_switch_mac(struct ksz_device *dev, const u8 *mac_addr)
 static int ksz9477_r_switch_mac(struct ksz_device *dev, u8 *mac_addr)
 {
 	return ksz_get(dev, REG_SW_MAC_ADDR_0, mac_addr, ETH_ALEN);
+}
+
+#define KSZ9477_BROADCAST_STORM_50MS_DIV  7440    /* 144880 * 50 ms */
+#define KSZ9477_BROADCAST_STORM_RATE_MAX  0x7ff
+
+static void ksz9477_cfg_broadcast_storm(struct ksz_device *dev, u8 rate_percent)
+{
+	u16 data16;
+	u32 storm_rate;
+
+	storm_rate = (KSZ9477_BROADCAST_STORM_50MS_DIV * rate_percent) / 100;
+
+	if (storm_rate > KSZ9477_BROADCAST_STORM_RATE_MAX)
+		storm_rate = KSZ9477_BROADCAST_STORM_RATE_MAX;
+
+	/* Set broadcast storm protection rate */
+	ksz_read16(dev, REG_SW_MAC_CTRL_2, &data16);
+	data16 &= ~BROADCAST_STORM_RATE;
+	data16 |= storm_rate;
+	ksz_write16(dev, REG_SW_MAC_CTRL_2, data16);
+}
+
+static void ksz9477_get_broadcast_storm(struct ksz_device *dev, u8 *rate_percent)
+{
+	u16 data16;
+	ksz_read16(dev, REG_SW_MAC_CTRL_2, &data16);
+	data16 &= BROADCAST_STORM_RATE;
+
+	*rate_percent = (u8)(((u32)data16 * 100) / (KSZ9477_BROADCAST_STORM_50MS_DIV));
+
+	if (*rate_percent < 1)
+		*rate_percent = 1;
+}
+
+static void ksz9477_cfg_broadcast_multicast_storm(struct ksz_device *dev, bool enable)
+{
+	ksz_cfg(dev, REG_SW_MAC_CTRL_1, MULTICAST_STORM_DISABLE, !enable);
+}
+
+static void ksz9477_get_broadcast_multicast_storm(struct ksz_device *dev, bool *enabled)
+{
+	u8 data8;
+	ksz_read8(dev, REG_SW_MAC_CTRL_1, &data8);
+	*enabled = !(data8 & MULTICAST_STORM_DISABLE);
+}
+
+static void ksz9477_cfg_port_broadcast_storm(struct ksz_device *dev, int port, bool enable)
+{
+	ksz_port_cfg(dev, port, P_BCAST_STORM_CTRL, PORT_BROADCAST_STORM, enable);
+}
+
+static void ksz9477_get_port_broadcast_storm(struct ksz_device *dev, int port, bool *enabled)
+{
+	u8 data8;
+	ksz_pread8(dev, port, P_BCAST_STORM_CTRL, &data8);
+	*enabled = !!(data8 & PORT_BROADCAST_STORM);
+}
+
+static void ksz9477_cfg_mtu(struct ksz_device *dev, u16 mtu)
+{
+	if (mtu > 0x2328)
+		mtu = 0x2328;
+
+	ksz_write16(dev, REG_SW_MTU__2, mtu);
+}
+
+static void ksz9477_get_mtu(struct ksz_device *dev, u16 *mtu)
+{
+	u16 data16;
+	ksz_read16(dev, REG_SW_MTU__2, &data16);
+	*mtu = data16 & 0x3FFF;
+}
+
+static void ksz9477_cfg_port_enable(struct ksz_device *dev, int port, bool enable)
+{
+	ksz9477_port_cfg16(dev, port, REG_PORT_PHY_CTRL, PORT_POWER_DOWN, !enable);
+}
+
+static void ksz9477_get_port_enable(struct ksz_device *dev, int port, bool *enabled)
+{
+	u16 data16;
+	ksz_pread16(dev, port, REG_PORT_PHY_CTRL, &data16);
+	*enabled = !(data16 & PORT_POWER_DOWN);
+}
+
+static void ksz9477_get_port_link(struct ksz_device *dev, int port, struct ksz_port_link *link)
+{
+	u8 data8;
+	ksz_pread8(dev, port, REG_PORT_STATUS_0, &data8);
+
+	switch ((data8 >> PORT_INTF_SPEED_S) & PORT_INTF_SPEED_M) {
+		case 0: link->speed = 10;   break;
+		case 1: link->speed = 100;  break;
+		case 2: link->speed = 1000; break;
+		default:
+			link->speed = 10;
+			break;
+	}
+
+	link->duplex = !!(data8 & PORT_INTF_FULL_DUPLEX);
+	link->link = 0;
+	link->autoneg = 0;
+
+	if (port < dev->phy_port_cnt) {
+		u16 data16;
+
+		ksz_pread16(dev, port, REG_PORT_PHY_STATUS, &data16);
+		link->link = !!(data16 & PORT_LINK_STATUS);
+
+		ksz_pread16(dev, port, REG_PORT_PHY_CTRL, &data16);
+		link->autoneg = !!(data16 & PORT_AUTO_NEG_ENABLE);
+	}
+}
+
+static void ksz9477_get_port_stp_state(struct ksz_device *dev, int port, bool *rx, bool *tx, bool *learning)
+{
+	u8 data;
+	ksz_pread8(dev, port, P_STP_CTRL, &data);
+
+	if (rx)
+		*rx = !!(data & PORT_RX_ENABLE)
+	if (tx)
+		*tx = !!(data & PORT_TX_ENABLE)
+	if (learning)
+		*learning = !(data & PORT_LEARN_DISABLE)
 }
 
 static const struct ksz_dev_ops ksz9477_dev_ops = {
@@ -2076,6 +2199,28 @@ static const struct ksz_dev_ops ksz9477_dev_ops = {
 	.r_sta_mac_table = ksz9477_r_sta_mac_table,
 	.w_sta_mac_table = ksz9477_w_sta_mac_table,
 	.ins_sta_mac_table = ksz9477_ins_sta_mac_table,
+
+	/* Port STP states */
+	.get_port_stp_state = ksz9477_get_port_stp_state,
+
+	/* Speed/duplex/autonegotiation */
+	.get_port_link = ksz9477_get_port_link,
+
+	/* Broadcast/multicast storm protection control */
+	.cfg_broadcast_storm = ksz9477_cfg_broadcast_storm,
+	.get_broadcast_storm = ksz9477_get_broadcast_storm,
+	.cfg_broadcast_multicast_storm = ksz9477_cfg_broadcast_multicast_storm,
+	.get_broadcast_multicast_storm = ksz9477_get_broadcast_multicast_storm,
+	.cfg_port_broadcast_storm = ksz9477_cfg_port_broadcast_storm,
+	.get_port_broadcast_storm = ksz9477_get_port_broadcast_storm,
+
+	/* MTU */
+	.cfg_mtu = ksz9477_cfg_mtu,
+	.get_mtu = ksz9477_get_mtu,
+
+	/* Port enable */
+	.cfg_port_enable = ksz9477_cfg_port_enable,
+	.get_port_enable = ksz9477_get_port_enable,
 };
 
 /* For Ingress (Host -> KSZ), 2 bytes are added before FCS.
