@@ -7,6 +7,8 @@
 #ifndef __KSZ_COMMON_H
 #define __KSZ_COMMON_H
 
+int ksz_setup_sta_mac_table(struct ksz_device *dev);
+
 void ksz_update_port_member(struct ksz_device *dev, int port);
 void ksz_init_mib_timer(struct ksz_device *dev);
 

@@ -208,6 +208,8 @@ static int ksz9477_reset_switch(struct ksz_device *dev)
 	/* reset switch */
 	ksz_cfg(dev, REG_SW_OPERATION, SW_RESET, true);
 
+	usleep_range(100, 500);
+
 	/* turn off SPI DO Edge select */
 	ksz_read8(dev, REG_SW_GLOBAL_SERIAL_CTRL_0, &data8);
 	data8 &= ~SPI_AUTO_EDGE_DETECTION;
@@ -420,13 +422,13 @@ static void ksz9477_port_stp_state_set(struct dsa_switch *ds, int port,
 			member = 0;
 		break;
 	case BR_STATE_LISTENING:
-		data |= (PORT_RX_ENABLE | PORT_LEARN_DISABLE);
+		data |= (/*PORT_RX_ENABLE | */PORT_LEARN_DISABLE);
 		if (port != dev->cpu_port &&
 		    p->stp_state == BR_STATE_DISABLED)
 			member = dev->host_mask | p->vid_member;
 		break;
 	case BR_STATE_LEARNING:
-		data |= PORT_RX_ENABLE;
+		/*data |= PORT_RX_ENABLE;*/
 		break;
 	case BR_STATE_FORWARDING:
 		data |= (PORT_TX_ENABLE | PORT_RX_ENABLE);
@@ -1086,6 +1088,185 @@ static int ksz9477_port_mirror_add(struct dsa_switch *ds, int port,
 	return 0;
 }
 
+static int ksz9477_r_sta_mac_table(struct ksz_device *dev, u16 addr,
+				   struct alu_struct *alu)
+{
+	u32 static_table[4];
+	u32 data;
+	int ret;
+
+	mutex_lock(&dev->alu_mutex);
+
+	data = (addr << ALU_STAT_INDEX_S) |
+		ALU_STAT_READ | ALU_STAT_START;
+
+	ksz_write32(dev, REG_SW_ALU_STAT_CTRL__4, data);
+
+	/* wait to be finished */
+	ret = readx_poll_timeout(read32_op, REG_SW_ALU_STAT_CTRL__4,
+				data, !(data & ALU_STAT_START),
+				10, 1000);
+	if (ret < 0) {
+		dev_dbg(dev->dev, "Failed to read ALU STATIC\n");
+		goto exit;
+	}
+
+	/* read ALU static table */
+	ksz9477_read_table(dev, static_table);
+
+	if (static_table[0] & ALU_V_STATIC_VALID) {
+		ksz9477_convert_alu(alu, static_table);
+	}
+	else {
+		ret = -ENXIO;
+	}
+
+exit:
+	mutex_unlock(&dev->alu_mutex);
+	return ret;
+}
+
+/*
+ * dev->alu_mutex must be locked
+ */
+static int ksz9477_sta_mac_table_find_addr_(
+	struct ksz_device *dev, int fid, u32 mac_hi, u32 mac_lo, u16 *addr)
+{
+	int index;
+	u32 data;
+	int ret;
+	u32 static_table[4];
+
+	for (index = 0; index < dev->num_statics; index++) {
+		/* find empty slot first */
+		data = (index << ALU_STAT_INDEX_S) |
+			ALU_STAT_READ | ALU_STAT_START;
+		ksz_write32(dev, REG_SW_ALU_STAT_CTRL__4, data);
+
+		/* wait to be finished */
+		ret = readx_poll_timeout(read32_op, REG_SW_ALU_STAT_CTRL__4,
+					data, !(data & ALU_STAT_START),
+					10, 1000);
+		if (ret < 0) {
+			dev_dbg(dev->dev, "Failed to read ALU STATIC\n");
+			return -1;
+		}
+
+		/* read ALU static table */
+		ksz9477_read_table(dev, static_table);
+
+		if (static_table[0] & ALU_V_STATIC_VALID) {
+			/* check this has same vid & mac address */
+			if (((static_table[2] >> ALU_V_FID_S) == fid) &&
+			    ((static_table[2] & ALU_V_MAC_ADDR_HI) == mac_hi) &&
+			    static_table[3] == mac_lo) {
+				/* found matching one */
+				*addr = index;
+				return 0;
+			}
+		} else {
+			/* found empty one */
+			*addr = index;
+			return 0;
+		}
+	}
+
+	/* no available entry */
+	return -1;
+}
+
+/*
+ * dev->alu_mutex must be locked
+ */
+static void ksz9477_w_sta_mac_table_(struct ksz_device *dev, u16 addr,
+				    struct alu_struct *alu)
+{
+	u32 static_table[4];
+	u32 data;
+	int ret;
+	u32 mac_hi, mac_lo;
+
+	mac_hi  = ((alu->mac[0] << 8)  |  alu->mac[1]);
+	mac_lo  = ((alu->mac[2] << 24) | (alu->mac[3] << 16));
+	mac_lo |= ((alu->mac[4] << 8)  |  alu->mac[5]);
+
+	/* add entry */
+	static_table[0] = alu->is_static ? ALU_V_STATIC_VALID : 0;
+
+	if (alu->is_src_filter)
+		static_table[0] |= ALU_V_SRC_FILTER;
+
+	if (alu->is_dst_filter)
+		static_table[0] |= ALU_V_DST_FILTER;
+
+	static_table[0] |= ((alu->prio_age & ALU_V_PRIO_AGE_CNT_M) << ALU_V_PRIO_AGE_CNT_S);
+	static_table[0] |= alu->mstp & ALU_V_MSTP_M;
+
+	static_table[1] = alu->port_forward;
+
+	if (alu->is_override)
+		static_table[1] |= ALU_V_OVERRIDE;
+
+	if (alu->is_use_fid)
+		static_table[1] |= ALU_V_USE_FID;
+
+	static_table[2] = (alu->fid << ALU_V_FID_S);
+	static_table[2] |= mac_hi;
+	static_table[3] = mac_lo;
+
+	ksz9477_write_table(dev, static_table);
+
+	data = (addr << ALU_STAT_INDEX_S) | ALU_STAT_START;
+	ksz_write32(dev, REG_SW_ALU_STAT_CTRL__4, data);
+
+	/* wait to be finished */
+	ret = readx_poll_timeout(read32_op, REG_SW_ALU_STAT_CTRL__4, data,
+				!(data & ALU_STAT_START), 10, 1000);
+	if (ret < 0) {
+		dev_err(dev->dev, "Failed to write ALU STATIC %02x:%02x:%02x:%02x:%02x:%02x to address %u\n",
+			alu->mac[0], alu->mac[1], alu->mac[2], alu->mac[3], alu->mac[4], alu->mac[5], addr);
+	}
+}
+
+static void ksz9477_w_sta_mac_table(struct ksz_device *dev, u16 addr,
+				    struct alu_struct *alu)
+{
+	mutex_lock(&dev->alu_mutex);
+	ksz9477_w_sta_mac_table_(dev, addr, alu);
+	mutex_unlock(&dev->alu_mutex);
+}
+
+static int ksz9477_ins_sta_mac_table(struct ksz_device *dev,
+				struct alu_struct *alu, u16 *addr)
+{
+	int ret;
+	u16 table_addr = 0;
+	u32 mac_hi;
+	u32 mac_lo;
+
+	mac_hi  = ((alu->mac[0] << 8)  |  alu->mac[1]);
+	mac_lo  = ((alu->mac[2] << 24) | (alu->mac[3] << 16));
+	mac_lo |= ((alu->mac[4] << 8)  |  alu->mac[5]);
+
+	mutex_lock(&dev->alu_mutex);
+
+	ret = ksz9477_sta_mac_table_find_addr_(dev, alu->fid, mac_hi, mac_lo, &table_addr);
+
+	if (ret) {
+		/* no available entry */
+		mutex_unlock(&dev->alu_mutex);
+		return ret;
+	}
+
+	ksz9477_w_sta_mac_table_(dev, table_addr, alu);
+
+	mutex_unlock(&dev->alu_mutex);
+	if (addr)
+		*addr = table_addr;
+
+	return 0;
+}
+
 static void ksz9477_port_mirror_del(struct dsa_switch *ds, int port,
 				    struct dsa_mall_mirror_tc_entry *mirror)
 {
@@ -1251,6 +1432,7 @@ static phy_interface_t ksz9477_get_interface(struct ksz_device *dev, int port)
 		}
 		break;
 	}
+
 	return interface;
 }
 
@@ -1262,9 +1444,15 @@ static void ksz9477_port_setup(struct ksz_device *dev, int port, bool cpu_port)
 	struct ksz_port *p = &dev->ports[port];
 
 	/* enable tag tail for host port */
-	if (cpu_port)
-		ksz_port_cfg(dev, port, REG_PORT_CTRL_0, PORT_TAIL_TAG_ENABLE,
-			     true);
+	if (cpu_port) {
+		ksz_port_cfg(dev, port, REG_PORT_CTRL_0, PORT_TAIL_TAG_ENABLE, true);
+		dev_info(dev->dev, "Port %d: Enabled tail tagging\n", port);
+
+		/* Enable Tx, Rx and disable learning on CPU port */
+		ksz_pread8(dev, port, P_STP_CTRL, &data8);
+		data8 |= (PORT_TX_ENABLE | PORT_RX_ENABLE | PORT_LEARN_DISABLE);
+		ksz_pwrite8(dev, port, P_STP_CTRL, data8);
+	}
 
 	ksz_port_cfg(dev, port, REG_PORT_CTRL_0, PORT_MAC_LOOPBACK, false);
 
@@ -1371,9 +1559,12 @@ static void ksz9477_config_cpu_port(struct dsa_switch *ds)
 				dev->interface = interface;
 			if (interface && interface != dev->interface)
 				dev_info(dev->dev,
-					 "use %s instead of %s\n",
+					 "Use %s instead of %s\n",
 					  phy_modes(dev->interface),
 					  phy_modes(interface));
+			else
+				dev_info(dev->dev,
+					 "Use %s\n", phy_modes(interface));
 
 			/* enable cpu port */
 			ksz9477_port_setup(dev, i, true);
@@ -1444,8 +1635,22 @@ static int ksz9477_setup(struct dsa_switch *ds)
 	/* enable global MIB counter freeze function */
 	ksz_cfg(dev, REG_SW_MAC_CTRL_6, SW_MIB_COUNTER_FREEZE, true);
 
+	ret = ksz_setup_sta_mac_table(dev);
+	if (ret) {
+		dev_err(ds->dev, "Failed to setup static MAC address table\n");
+		return ret;
+	}
+
+	/* Enable jumbo frames */
+	ksz_cfg(dev, REG_SW_MAC_CTRL_1, SW_JUMBO_PACKET, true);
+	ksz_write16(dev, REG_SW_MTU__2, 0x2328);
+
+	dev_info(ds->dev, "Enabled jumbo frames support\n");
+
 	/* start switch */
 	ksz_cfg(dev, REG_SW_OPERATION, SW_START, true);
+
+	dev_info(ds->dev, "The switch has been successfully started\n");
 
 	ksz_init_mib_timer(dev);
 
@@ -1635,8 +1840,8 @@ static int ksz9477_switch_detect(struct ksz_device *dev)
 		}
 	}
 	id32 = (id_hi << 16) | (id_lo << 8);
- 
- 	dev->chip_id = id32;
+
+	dev->chip_id = id32;
 	if (chip >= 0) {
 		int id;
 
@@ -1736,6 +1941,8 @@ static int ksz9477_switch_init(struct ksz_device *dev)
 	if (!dev->port_cnt)
 		return -ENODEV;
 
+	dev_info(dev->dev, "%s (%d ports)\n", dev->name, dev->port_cnt);
+
 	dev->port_mask = (1 << dev->port_cnt) - 1;
 	dev->port_mask &= dev->cpu_ports;
 
@@ -1777,6 +1984,16 @@ static void ksz9477_switch_exit(struct ksz_device *dev)
 	ksz9477_reset_switch(dev);
 }
 
+static int ksz9477_w_switch_mac(struct ksz_device *dev, const u8 *mac_addr)
+{
+	return ksz_set(dev, REG_SW_MAC_ADDR_0, (void *)mac_addr, ETH_ALEN);
+}
+
+static int ksz9477_r_switch_mac(struct ksz_device *dev, u8 *mac_addr)
+{
+	return ksz_get(dev, REG_SW_MAC_ADDR_0, mac_addr, ETH_ALEN);
+}
+
 static const struct ksz_dev_ops ksz9477_dev_ops = {
 	.cfg_port_member = ksz9477_cfg_port_member,
 	.flush_dyn_mac_table = ksz9477_flush_dyn_mac_table,
@@ -1790,6 +2007,11 @@ static const struct ksz_dev_ops ksz9477_dev_ops = {
 	.detect = ksz9477_switch_detect,
 	.init = ksz9477_switch_init,
 	.exit = ksz9477_switch_exit,
+	.r_switch_mac = ksz9477_r_switch_mac,
+	.w_switch_mac = ksz9477_w_switch_mac,
+	.r_sta_mac_table = ksz9477_r_sta_mac_table,
+	.w_sta_mac_table = ksz9477_w_sta_mac_table,
+	.ins_sta_mac_table = ksz9477_ins_sta_mac_table,
 };
 
 /* For Ingress (Host -> KSZ), 2 bytes are added before FCS.
@@ -1834,6 +2056,9 @@ static int ksz9477_get_tag(struct ksz_device *dev, u8 *tag, int *port)
 	return len;
 }
 
+#define KSZ9477_TAIL_TAG_OVERRIDE	BIT(9)
+#define KSZ9477_TAIL_TAG_LOOKUP		BIT(10)
+
 static void ksz9477_set_tag(struct ksz_device *dev, void *ptr, u8 *addr, int p)
 {
 	if (dev->overrides & PTP_TAG) {
@@ -1845,12 +2070,17 @@ static void ksz9477_set_tag(struct ksz_device *dev, void *ptr, u8 *addr, int p)
 	if (dev->features & IS_9893) {
 		u8 *tag = (u8 *)ptr;
 
-		*tag = 1 << p;
+		*tag = BIT(p);
 	} else {
-		u16 *tag = (u16 *)ptr;
+		__be16 *tag = (__be16 *)ptr;
+		u16 val;
 
-		*tag = 1 << p;
-		*tag = cpu_to_be16(*tag);
+		val = BIT(p);
+
+		if (is_link_local_ether_addr(addr))
+			val |= KSZ9477_TAIL_TAG_OVERRIDE;
+
+		*tag = cpu_to_be16(val);
 	}
 }
 

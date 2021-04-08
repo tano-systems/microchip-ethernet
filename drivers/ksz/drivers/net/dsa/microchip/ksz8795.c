@@ -687,10 +687,6 @@ static void ksz8795_get_strings(struct dsa_switch *ds, int port,
 	}
 }
 
-static const u8 stp_multicast_addr[] = {
-	0x01, 0x80, 0xC2, 0x00, 0x00, 0x00
-};
-
 static void ksz8795_cfg_port_member(struct ksz_device *dev, int port,
 				    u8 member)
 {
@@ -1193,14 +1189,11 @@ static int ksz8795_setup(struct dsa_switch *ds)
 	/* enable global MIB counter freeze function */
 	ksz_cfg(dev, REG_SW_CTRL_6, SW_MIB_COUNTER_FREEZE, true);
 
-	/* Setup STP address for STP operation. */
-	memset(&alu, 0, sizeof(alu));
-	memcpy(alu.mac, stp_multicast_addr, ETH_ALEN);
-	alu.is_static = true;
-	alu.is_override = true;
-	alu.port_forward = dev->host_mask;
-
-	ksz8795_w_sta_mac_table(dev, 0, &alu);
+	ret = ksz_setup_sta_mac_table(dev);
+	if (ret) {
+		dev_err(ds->dev, "Failed to setup static MAC address table\n");
+		return ret;
+	}
 
 	ksz_init_mib_timer(dev);
 

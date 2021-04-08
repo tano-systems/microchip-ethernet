@@ -49,6 +49,8 @@ struct ksz_dev_ops {
 			       struct alu_struct *alu);
 	void (*w_sta_mac_table)(struct ksz_device *dev, u16 addr,
 				struct alu_struct *alu);
+	int (*ins_sta_mac_table)(struct ksz_device *dev,
+				struct alu_struct *alu, u16 *addr);
 	void (*r_mib_cnt)(struct ksz_device *dev, int port, u16 addr,
 			  u64 *cnt);
 	void (*r_mib_pkt)(struct ksz_device *dev, int port, u16 addr,
@@ -61,6 +63,8 @@ struct ksz_dev_ops {
 	int (*detect)(struct ksz_device *dev);
 	int (*init)(struct ksz_device *dev);
 	void (*exit)(struct ksz_device *dev);
+	int (*w_switch_mac)(struct ksz_device *dev, const u8 *mac_addr);
+	int (*r_switch_mac)(struct ksz_device *dev, u8 *mac_addr);
 };
 
 struct ksz_device *ksz_switch_alloc(struct device *base);

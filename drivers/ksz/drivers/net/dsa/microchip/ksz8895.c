@@ -324,6 +324,8 @@ static int ksz8895_r_sta_mac_table(struct ksz_device *dev, u16 addr,
 	u32 data_hi;
 	u32 data_lo;
 
+	// TODO: lock alu_mutex?
+
 	ksz8895_r_table(dev, TABLE_STATIC_MAC, addr, &data);
 	data_hi = data >> 32;
 	data_lo = (u32)data;
@@ -355,6 +357,8 @@ static void ksz8895_w_sta_mac_table(struct ksz_device *dev, u16 addr,
 	u32 data_lo;
 	u8 fid = ksz8895_get_fid(alu->fid);
 
+	// TODO: lock alu_mutex?
+
 	data_lo = ((u32)alu->mac[2] << 24) |
 		((u32)alu->mac[3] << 16) |
 		((u32)alu->mac[4] << 8) | alu->mac[5];
@@ -374,6 +378,13 @@ static void ksz8895_w_sta_mac_table(struct ksz_device *dev, u16 addr,
 
 	data = (u64)data_hi << 32 | data_lo;
 	ksz8895_w_table(dev, TABLE_STATIC_MAC, addr, data);
+}
+
+static int ksz9985_ins_sta_mac_table(struct ksz_device *dev,
+				struct alu_struct *alu, u16 *addr)
+{
+	// TODO:
+	return 0;
 }
 
 static void ksz8895_from_vlan(u16 vlan, u8 *fid, u8 *member, u8 *valid)
@@ -692,10 +703,6 @@ static void ksz8895_get_strings(struct dsa_switch *ds, int port,
 		       ETH_GSTRING_LEN);
 	}
 }
-
-static const u8 stp_multicast_addr[] = {
-	0x01, 0x80, 0xC2, 0x00, 0x00, 0x00
-};
 
 static void ksz8895_cfg_port_member(struct ksz_device *dev, int port,
 				    u8 member)
@@ -1158,14 +1165,11 @@ static int ksz8895_setup(struct dsa_switch *ds)
 	for (i = 0; i < VLAN_TABLE_ENTRIES; i++)
 		ksz8895_r_vlan_entries(dev, i);
 
-	/* Setup STP address for STP operation. */
-	memset(&alu, 0, sizeof(alu));
-	memcpy(alu.mac, stp_multicast_addr, ETH_ALEN);
-	alu.is_static = true;
-	alu.is_override = true;
-	alu.port_forward = dev->host_mask;
-
-	ksz8895_w_sta_mac_table(dev, 0, &alu);
+	ret = ksz_setup_sta_mac_table(dev);
+	if (ret) {
+		dev_err(ds->dev, "Failed to setup static MAC address table\n");
+		return ret;
+	}
 
 	ksz_write8(dev, REG_CHIP_ID1, SW_START);
 
@@ -1391,6 +1395,16 @@ static void ksz8895_switch_exit(struct ksz_device *dev)
 	ksz_write8(dev, REG_CHIP_ID1, SW_START);
 }
 
+static int ksz8895_w_switch_mac(struct ksz_device *dev, const u8 *mac_addr)
+{
+	return ksz_set(dev, REG_SW_MAC_ADDR_0, (void *)mac_addr, ETH_ALEN);
+}
+
+static int ksz8895_r_switch_mac(struct ksz_device *dev, u8 *mac_addr)
+{
+	return ksz_get(dev, REG_SW_MAC_ADDR_0, mac_addr, ETH_ALEN);
+}
+
 static const struct ksz_dev_ops ksz8895_dev_ops = {
 	.cfg_port_member = ksz8895_cfg_port_member,
 	.flush_dyn_mac_table = ksz8895_flush_dyn_mac_table,
@@ -1398,9 +1412,12 @@ static const struct ksz_dev_ops ksz8895_dev_ops = {
 	.port_setup = ksz8895_port_setup,
 	.r_phy = ksz8895_r_phy,
 	.w_phy = ksz8895_w_phy,
+	.r_switch_mac = ksz8895_r_switch_mac,
+	.w_switch_mac = ksz8895_w_switch_mac,
 	.r_dyn_mac_table = ksz8895_r_dyn_mac_table,
 	.r_sta_mac_table = ksz8895_r_sta_mac_table,
 	.w_sta_mac_table = ksz8895_w_sta_mac_table,
+	.ins_sta_mac_table = ksz8895_ins_sta_mac_table,
 	.r_mib_cnt = ksz8895_r_mib_cnt,
 	.r_mib_pkt = ksz8895_r_mib_pkt,
 	.port_init_cnt = ksz8895_port_init_cnt,
