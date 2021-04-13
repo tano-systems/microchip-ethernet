@@ -707,6 +707,9 @@ static void ksz8895_cfg_port_member(struct ksz_device *dev, int port,
 {
 	u8 data;
 
+	dev_dbg(dev->dev, "%s: port = %d, member = 0x%x\n",
+		__FUNCTION__, port, member);
+
 	ksz_pread8(dev, port, P_MIRROR_CTRL, &data);
 	data &= ~PORT_VLAN_MEMBERSHIP;
 	data |= (member & dev->port_mask);
@@ -720,8 +723,6 @@ static void ksz8895_port_stp_state_set(struct dsa_switch *ds, int port,
 	struct ksz_device *dev = ds->priv;
 	struct ksz_port *p = &dev->ports[port];
 	u8 data;
-	int member = -1;
-	int forward = dev->member;
 
 	ksz_pread8(dev, port, P_STP_CTRL, &data);
 	data &= ~(PORT_TX_ENABLE | PORT_RX_ENABLE | PORT_LEARN_DISABLE);
@@ -729,70 +730,45 @@ static void ksz8895_port_stp_state_set(struct dsa_switch *ds, int port,
 	switch (state) {
 	case BR_STATE_DISABLED:
 		data |= PORT_LEARN_DISABLE;
-		if (port < SWITCH_PORT_NUM)
-			member = 0;
 		break;
 	case BR_STATE_LISTENING:
-		data |= (PORT_RX_ENABLE | PORT_LEARN_DISABLE);
-		if (port < SWITCH_PORT_NUM &&
-		    p->stp_state == BR_STATE_DISABLED)
-			member = dev->host_mask | p->vid_member;
+		data |= PORT_LEARN_DISABLE;
 		break;
 	case BR_STATE_LEARNING:
-		data |= PORT_RX_ENABLE;
 		break;
 	case BR_STATE_FORWARDING:
 		data |= (PORT_TX_ENABLE | PORT_RX_ENABLE);
-
-		/* This function is also used internally. */
-		if (port == dev->cpu_port)
-			break;
-
-		member = dev->host_mask | p->vid_member;
-
-		/* Port is a member of a bridge. */
-		if (dev->br_member & (1 << port)) {
-			dev->member |= (1 << port);
-			member = dev->member;
-		}
 		break;
 	case BR_STATE_BLOCKING:
 		data |= PORT_LEARN_DISABLE;
-		if (port < SWITCH_PORT_NUM &&
-		    p->stp_state == BR_STATE_DISABLED)
-			member = dev->host_mask | p->vid_member;
 		break;
 	default:
 		dev_err(ds->dev, "invalid STP state: %d\n", state);
 		return;
 	}
 
+	/* Always disable learning for non-bridged ports */
+	if (!p->bridged)
+		data |= PORT_LEARN_DISABLE;
+
 	ksz_pwrite8(dev, port, P_STP_CTRL, data);
+
 	p->stp_state = state;
+
 	if (data & PORT_RX_ENABLE)
 		dev->rx_ports |= (1 << port);
 	else
 		dev->rx_ports &= ~(1 << port);
+
 	if (data & PORT_TX_ENABLE)
 		dev->tx_ports |= (1 << port);
 	else
 		dev->tx_ports &= ~(1 << port);
 
-	/* Port membership may share register with STP state. */
-	if (member >= 0 && member != p->member)
-		dev->dev_ops->cfg_port_member(dev, port, (u8)member);
-
-	/* Check if forwarding needs to be updated. */
-	if (state != BR_STATE_FORWARDING) {
-		if (dev->br_member & (1 << port))
-			dev->member &= ~(1 << port);
-	}
-
 	/* When topology has changed the function ksz_update_port_member
 	 * should be called to modify port forwarding behavior.
 	 */
-	if (forward != dev->member)
-		ksz_update_port_member(dev, port);
+	ksz_port_based_vlan_update(ds);
 }
 
 static void ksz8895_flush_dyn_mac_table(struct ksz_device *dev, int port)

@@ -17,27 +17,68 @@
 
 #include "ksz_priv.h"
 
-void ksz_update_port_member(struct ksz_device *dev, int port)
+u8 ksz_port_based_vlan_mask(struct dsa_switch *ds, int port)
 {
-	struct ksz_port *p;
+	struct ksz_device *dev = ds->priv;
+	u8 mask;
+
+	if (port == dev->cpu_port)
+		return dev->port_mask;
+
+	if (dev->ports[port].stp_state == BR_STATE_DISABLED)
+		return 0;
+
+	mask = dev->host_mask | (1 << port);
+
+	if (dev->ports[port].stp_state != BR_STATE_FORWARDING)
+		return mask;
+
+	if (dev->ports[port].bridged) {
+		int i;
+		struct ksz_port *p;
+		struct net_device *br = dsa_to_port(ds, port)->bridge_dev;
+
+		for (i = 0; i < dev->mib_port_cnt; i++) {
+			if (i == port)
+				continue;
+
+			if (dsa_is_unused_port(ds, i))
+				continue;
+
+			p = &dev->ports[i];
+
+			if (p->bridged && (dsa_to_port(ds, i)->bridge_dev == br)) {
+				if (p->stp_state == BR_STATE_FORWARDING)
+					mask |= (1 << i);
+			}
+		}
+	}
+
+	return mask;
+}
+EXPORT_SYMBOL_GPL(ksz_port_based_vlan_mask);
+
+void ksz_port_based_vlan_update(struct dsa_switch *ds)
+{
+	struct ksz_device *dev = ds->priv;
+
 	int i;
+	u8 mask;
 
 	for (i = 0; i < dev->mib_port_cnt; i++) {
-		if (i == port || i == dev->cpu_port)
-			continue;
-		p = &dev->ports[i];
-		if (!p->on)
-			continue;
-		if (!(dev->member & (1 << i)))
-			continue;
+		if (dsa_is_unused_port(ds, i))
+			mask = 0;
+		else
+			mask = ksz_port_based_vlan_mask(ds, i);
 
-		/* Port is a member of the bridge and is forwarding. */
-		if (p->stp_state == BR_STATE_FORWARDING &&
-		    p->member != dev->member)
-			dev->dev_ops->cfg_port_member(dev, i, dev->member);
+		dev_dbg(dev->dev, "%s: port %d: 0x%02x, brdev = %p\n",
+			__FUNCTION__, i, mask, dsa_to_port(ds, i)->bridge_dev);
+
+		if (dev->ports[i].member != mask)
+			dev->dev_ops->cfg_port_member(dev, i, mask);
 	}
 }
-EXPORT_SYMBOL_GPL(ksz_update_port_member);
+EXPORT_SYMBOL_GPL(ksz_port_based_vlan_update);
 
 static void port_r_cnt(struct ksz_device *dev, int port)
 {
@@ -220,8 +261,7 @@ int ksz_port_bridge_join(struct dsa_switch *ds, int port,
 			 struct net_device *br)
 {
 	struct ksz_device *dev = ds->priv;
-
-	dev->br_member |= (1 << port);
+	dev->ports[port].bridged = 1;
 
 	/* port_stp_state_set() will be called after to put the port in
 	 * appropriate state so there is no need to do anything.
@@ -235,9 +275,7 @@ void ksz_port_bridge_leave(struct dsa_switch *ds, int port,
 			   struct net_device *br)
 {
 	struct ksz_device *dev = ds->priv;
-
-	dev->br_member &= ~(1 << port);
-	dev->member &= ~(1 << port);
+	dev->ports[port].bridged = 0;
 
 	/* port_stp_state_set() will be called after to put the port in
 	 * forwarding state so there is no need to do anything.

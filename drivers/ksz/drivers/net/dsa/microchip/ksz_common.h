@@ -9,7 +9,8 @@
 
 int ksz_setup_sta_mac_table(struct ksz_device *dev);
 
-void ksz_update_port_member(struct ksz_device *dev, int port);
+u8 ksz_port_based_vlan_mask(struct dsa_switch *ds, int port);
+void ksz_port_based_vlan_update(struct dsa_switch *ds);
 void ksz_init_mib_timer(struct ksz_device *dev);
 
 /* Common DSA access functions */

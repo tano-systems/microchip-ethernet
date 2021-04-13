@@ -52,6 +52,7 @@ struct ksz_port {
 	u32 force:1;
 	u32 link_just_down:1;		/* link just goes down */
 	u32 freeze:1;			/* MIB counter freeze is enabled */
+	u32 bridged:1;
 
 	struct ksz_port_mib mib;
 };
@@ -112,8 +113,6 @@ struct ksz_device {
 	struct timer_list mib_read_timer;
 	struct work_struct mib_read;
 	unsigned long mib_read_interval;
-	u16 br_member;
-	u16 member;
 	u16 live_ports;
 	u16 on_ports;			/* ports enabled by DSA */
 	u16 rx_ports;
