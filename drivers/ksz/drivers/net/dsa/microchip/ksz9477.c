@@ -10,6 +10,7 @@
 #include <linux/iopoll.h>
 #include <linux/platform_data/microchip-ksz.h>
 #include <linux/phy.h>
+#include <linux/gpio.h>
 #include <linux/if_bridge.h>
 #include <net/dsa.h>
 #include <net/switchdev.h>
@@ -213,10 +214,18 @@ static int ksz9477_reset_switch(struct ksz_device *dev)
 	u8 data8;
 	u32 data32;
 
-	/* reset switch */
-	ksz_cfg(dev, REG_SW_OPERATION, SW_RESET, true);
+	if (gpio_is_valid(dev->reset_gpio)) {
+		/* Using hardware reset */
+		gpio_set_value(dev->reset_gpio, 0);
+		udelay(dev->reset_delay_hold);
+		gpio_set_value(dev->reset_gpio, 1);
+	}
+	else {
+		/* reset switch */
+		ksz_cfg(dev, REG_SW_OPERATION, SW_RESET, true);
+	}
 
-	usleep_range(100, 500);
+	udelay(dev->reset_delay_after);
 
 	/* turn off SPI DO Edge select */
 	ksz_read8(dev, REG_SW_GLOBAL_SERIAL_CTRL_0, &data8);
@@ -2146,11 +2155,11 @@ static void ksz9477_get_port_stp_state(struct ksz_device *dev, int port, bool *r
 	ksz_pread8(dev, port, P_STP_CTRL, &data);
 
 	if (rx)
-		*rx = !!(data & PORT_RX_ENABLE)
+		*rx = !!(data & PORT_RX_ENABLE);
 	if (tx)
-		*tx = !!(data & PORT_TX_ENABLE)
+		*tx = !!(data & PORT_TX_ENABLE);
 	if (learning)
-		*learning = !(data & PORT_LEARN_DISABLE)
+		*learning = !(data & PORT_LEARN_DISABLE);
 }
 
 static const struct ksz_dev_ops ksz9477_dev_ops = {

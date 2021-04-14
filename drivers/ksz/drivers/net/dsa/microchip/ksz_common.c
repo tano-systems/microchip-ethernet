@@ -10,10 +10,16 @@
 #include <linux/version.h>
 #include <linux/platform_data/microchip-ksz.h>
 #include <linux/phy.h>
+#include <linux/gpio.h>
 #include <linux/if_bridge.h>
-#include <linux/of_net.h>
 #include <net/dsa.h>
 #include <net/switchdev.h>
+
+#include <linux/of.h>
+#include <linux/of_mdio.h>
+#include <linux/of_gpio.h>
+#include <linux/of_net.h>
+#include <linux/of_device.h>
 
 #include "ksz_priv.h"
 
@@ -655,11 +661,52 @@ static void ksz_dsa_dump_info(struct ksz_device *dev)
 	}
 }
 
+static int ksz_switch_parse_devicetree(struct ksz_device *dev)
+{
+	int ret;
+		u32 val;
+
+	struct device_node *node = dev->dev->of_node;
+	if (!node)
+		return 0;
+
+	if (!of_property_read_u32(node, "reset-delay-after", &val))
+		dev->reset_delay_after = val;
+
+	if (!of_property_read_u32(node, "reset-delay-hold", &val))
+		dev->reset_delay_hold = val;
+
+	dev->reset_gpio = of_get_named_gpio_flags(node, "reset-gpios", 0, NULL);
+	if (dev->reset_gpio == -EPROBE_DEFER) {
+		dev_err(dev->dev, "Reset GPIO is not available: %d.\n", dev->reset_gpio);
+		return dev->reset_gpio;
+	}
+
+	if (gpio_is_valid(dev->reset_gpio)) {
+		ret = devm_gpio_request_one(dev->dev,
+			dev->reset_gpio, GPIOF_OUT_INIT_HIGH, "ksz_rst_n");
+
+		if (ret) {
+			dev_err(dev->dev, "Reset GPIO request failed: %d\n", ret);
+			return ret;
+		}
+
+		/* We need to wait at least of 100 us after reset */
+		udelay(dev->reset_delay_after);
+	}
+
+	return 0;
+}
+
 int ksz_switch_register(struct ksz_device *dev,
 			const struct ksz_dev_ops *ops,
 			const struct ksz_tag_ops *tag_ops)
 {
 	int ret;
+
+	dev->reset_gpio = -1;
+	dev->reset_delay_hold = 50000;
+	dev->reset_delay_after = 1000;
 
 	if (dev->pdata)
 		dev->chip_id = dev->pdata->chip_id;
@@ -673,6 +720,10 @@ int ksz_switch_register(struct ksz_device *dev,
 
 	if (dev->dev_ops->detect(dev))
 		return -EINVAL;
+
+	ret = ksz_switch_parse_devicetree(dev);
+	if (ret)
+		return ret;
 
 	ret = dev->dev_ops->init(dev);
 	if (ret)

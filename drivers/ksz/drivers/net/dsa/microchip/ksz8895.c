@@ -11,6 +11,7 @@
 #include <linux/iopoll.h>
 #include <linux/platform_data/microchip-ksz.h>
 #include <linux/phy.h>
+#include <linux/gpio.h>
 #include <linux/if_bridge.h>
 #include <net/dsa.h>
 #include <net/switchdev.h>
@@ -58,10 +59,20 @@ static const struct ksz_mib_info ksz8895_mib_names[TOTAL_SWITCH_COUNTER_NUM] = {
 
 static int ksz8895_reset_switch(struct ksz_device *dev)
 {
-	/* reset switch */
-	ksz_write8(dev, REG_POWER_MANAGEMENT_1,
-		   SW_SOFTWARE_POWER_DOWN << SW_POWER_MANAGEMENT_MODE_S);
-	ksz_write8(dev, REG_POWER_MANAGEMENT_1, 0);
+	if (gpio_is_valid(dev->reset_gpio)) {
+		/* Using hardware reset */
+		gpio_set_value(dev->reset_gpio, 0);
+		udelay(dev->reset_delay_hold);
+		gpio_set_value(dev->reset_gpio, 1);
+	}
+	else {
+		/* reset switch */
+		ksz_write8(dev, REG_POWER_MANAGEMENT_1,
+			   SW_SOFTWARE_POWER_DOWN << SW_POWER_MANAGEMENT_MODE_S);
+		ksz_write8(dev, REG_POWER_MANAGEMENT_1, 0);
+	}
+
+	udelay(dev->reset_delay_after);
 
 	return 0;
 }
@@ -1467,11 +1478,11 @@ static void ksz8895_get_port_stp_state(struct ksz_device *dev, int port, bool *r
 	ksz_pread8(dev, port, REG_PORT_CTRL_2, &data);
 
 	if (rx)
-		*rx = !!(data & PORT_RX_ENABLE)
+		*rx = !!(data & PORT_RX_ENABLE);
 	if (tx)
-		*tx = !!(data & PORT_TX_ENABLE)
+		*tx = !!(data & PORT_TX_ENABLE);
 	if (learning)
-		*learning = !(data & PORT_LEARN_DISABLE)
+		*learning = !(data & PORT_LEARN_DISABLE);
 }
 
 static const struct ksz_dev_ops ksz8895_dev_ops = {

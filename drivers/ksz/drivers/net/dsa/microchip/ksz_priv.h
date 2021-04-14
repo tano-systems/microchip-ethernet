@@ -85,6 +85,10 @@ struct ksz_device {
 
 	void *priv;
 
+	int reset_gpio;
+	int reset_delay_after;
+	int reset_delay_hold;
+
 	/* chip specific data */
 	u32 chip_id;
 	enum ksz_chip_series chip_series;
