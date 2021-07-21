@@ -61,6 +61,10 @@ static int ksz9477_spi_probe(struct spi_device *spi)
 	if (!dev)
 		return -ENOMEM;
 
+	ret = ksz_switch_preinit(dev);
+	if (ret)
+		return ret;
+
 	for (i = 0; i < ARRAY_SIZE(ksz9477_regmap_cfg); i++) {
 		dev->regmap[i] = devm_regmap_init_spi(spi,
 						      &ksz9477_regmap_cfg[i]);

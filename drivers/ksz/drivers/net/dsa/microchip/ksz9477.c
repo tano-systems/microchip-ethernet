@@ -214,16 +214,8 @@ static int ksz9477_reset_switch(struct ksz_device *dev)
 	u8 data8;
 	u32 data32;
 
-	if (gpio_is_valid(dev->reset_gpio)) {
-		/* Using hardware reset */
-		gpio_set_value(dev->reset_gpio, 0);
-		udelay(dev->reset_delay_hold);
-		gpio_set_value(dev->reset_gpio, 1);
-	}
-	else {
-		/* reset switch */
-		ksz_cfg(dev, REG_SW_OPERATION, SW_RESET, true);
-	}
+	/* reset switch */
+	ksz_cfg(dev, REG_SW_OPERATION, SW_RESET, true);
 
 	udelay(dev->reset_delay_after);
 

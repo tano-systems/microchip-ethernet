@@ -12,6 +12,7 @@
 #include <linux/phy.h>
 #include <linux/gpio.h>
 #include <linux/if_bridge.h>
+#include <linux/delay.h>
 #include <net/dsa.h>
 #include <net/switchdev.h>
 
@@ -664,7 +665,7 @@ static void ksz_dsa_dump_info(struct ksz_device *dev)
 static int ksz_switch_parse_devicetree(struct ksz_device *dev)
 {
 	int ret;
-		u32 val;
+	u32 val;
 
 	struct device_node *node = dev->dev->of_node;
 	if (!node)
@@ -676,6 +677,9 @@ static int ksz_switch_parse_devicetree(struct ksz_device *dev)
 	if (!of_property_read_u32(node, "reset-delay-hold", &val))
 		dev->reset_delay_hold = val;
 
+	if (!of_property_read_u32(node, "reset-val", &val))
+		dev->reset_val = !!val;
+
 	dev->reset_gpio = of_get_named_gpio_flags(node, "reset-gpios", 0, NULL);
 	if (dev->reset_gpio == -EPROBE_DEFER) {
 		dev_err(dev->dev, "Reset GPIO is not available: %d.\n", dev->reset_gpio);
@@ -683,16 +687,62 @@ static int ksz_switch_parse_devicetree(struct ksz_device *dev)
 	}
 
 	if (gpio_is_valid(dev->reset_gpio)) {
-		ret = devm_gpio_request_one(dev->dev,
-			dev->reset_gpio, GPIOF_OUT_INIT_HIGH, "ksz_rst_n");
+		dev_info(dev->dev, "Reset GPIO %d (reset by %d)\n",
+			dev->reset_gpio,
+			dev->reset_val);
+
+		ret = devm_gpio_request_one(
+			dev->dev,
+			dev->reset_gpio,
+			dev->reset_val ? GPIOF_OUT_INIT_HIGH : GPIOF_OUT_INIT_LOW,
+			"ksz_rst_n"
+		);
 
 		if (ret) {
-			dev_err(dev->dev, "Reset GPIO request failed: %d\n", ret);
+			dev_err(dev->dev, "Reset GPIO request failed (%d)\n", ret);
 			return ret;
 		}
+	}
 
-		/* We need to wait at least of 100 us after reset */
+	return 0;
+}
+
+static void ksz_switch_gpio_reset(struct ksz_device *dev)
+{
+	if (gpio_is_valid(dev->reset_gpio)) {
+		/* Using hardware reset */
+		gpio_set_value(dev->reset_gpio, dev->reset_val);
+		udelay(dev->reset_delay_hold);
+		gpio_set_value(dev->reset_gpio, !dev->reset_val);
 		udelay(dev->reset_delay_after);
+	}
+}
+
+int ksz_switch_preinit(struct ksz_device *dev)
+{
+	int ret;
+
+	dev_info(dev->dev, "Initializing switch\n");
+
+	dev->reset_gpio = -1;
+	dev->reset_delay_hold = 50000;
+	dev->reset_delay_after = 1000;
+	dev->reset_val = 1;
+
+	if (dev->pdata)
+		dev->chip_id = dev->pdata->chip_id;
+
+	mutex_init(&dev->stats_mutex);
+	mutex_init(&dev->alu_mutex);
+	mutex_init(&dev->vlan_mutex);
+
+	ret = ksz_switch_parse_devicetree(dev);
+	if (ret)
+		return ret;
+
+	if (gpio_is_valid(dev->reset_gpio)) {
+		ksz_switch_gpio_reset(dev);
+		dev_info(dev->dev, "Performed a switch hardware reset\n");
 	}
 
 	return 0;
@@ -704,30 +754,20 @@ int ksz_switch_register(struct ksz_device *dev,
 {
 	int ret;
 
-	dev->reset_gpio = -1;
-	dev->reset_delay_hold = 50000;
-	dev->reset_delay_after = 1000;
-
-	if (dev->pdata)
-		dev->chip_id = dev->pdata->chip_id;
-
-	mutex_init(&dev->stats_mutex);
-	mutex_init(&dev->alu_mutex);
-	mutex_init(&dev->vlan_mutex);
-
 	dev->dev_ops = ops;
 	dev->tag_ops = tag_ops;
 
-	if (dev->dev_ops->detect(dev))
-		return -EINVAL;
-
-	ret = ksz_switch_parse_devicetree(dev);
-	if (ret)
+	ret = dev->dev_ops->detect(dev);
+	if (ret) {
+		dev_err(dev->dev, "Failed to detect switch\n");
 		return ret;
+	}
 
 	ret = dev->dev_ops->init(dev);
-	if (ret)
+	if (ret) {
+		dev_err(dev->dev, "Failed to initialize switch\n");
 		return ret;
+	}
 
 	if (dev->dev->of_node) {
 		ret = of_get_phy_mode(dev->dev->of_node);
@@ -738,6 +778,7 @@ int ksz_switch_register(struct ksz_device *dev,
 	dev->ds->num_ports = dev->mib_port_cnt;
 	ret = dsa_register_switch(dev->ds);
 	if (ret) {
+		dev_err(dev->dev, "Failed to register DSA switch\n");
 		dev->dev_ops->exit(dev);
 		return ret;
 	}

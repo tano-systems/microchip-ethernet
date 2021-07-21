@@ -44,6 +44,10 @@ static int ksz9477_i2c_probe(struct i2c_client *i2c,
 	if (!dev)
 		return -ENOMEM;
 
+	ret = ksz_switch_preinit(dev);
+	if (ret)
+		return ret;
+
 	for (i = 0; i < ARRAY_SIZE(ksz9477_regmap_cfg); i++) {
 		dev->regmap[i] = devm_regmap_init_i2c(i2c,
 						      &ksz9477_regmap_cfg[i]);

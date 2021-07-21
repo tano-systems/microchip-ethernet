@@ -59,18 +59,10 @@ static const struct ksz_mib_info ksz8895_mib_names[TOTAL_SWITCH_COUNTER_NUM] = {
 
 static int ksz8895_reset_switch(struct ksz_device *dev)
 {
-	if (gpio_is_valid(dev->reset_gpio)) {
-		/* Using hardware reset */
-		gpio_set_value(dev->reset_gpio, 0);
-		udelay(dev->reset_delay_hold);
-		gpio_set_value(dev->reset_gpio, 1);
-	}
-	else {
-		/* reset switch */
-		ksz_write8(dev, REG_POWER_MANAGEMENT_1,
-			   SW_SOFTWARE_POWER_DOWN << SW_POWER_MANAGEMENT_MODE_S);
-		ksz_write8(dev, REG_POWER_MANAGEMENT_1, 0);
-	}
+	/* reset switch */
+	ksz_write8(dev, REG_POWER_MANAGEMENT_1,
+		   SW_SOFTWARE_POWER_DOWN << SW_POWER_MANAGEMENT_MODE_S);
+	ksz_write8(dev, REG_POWER_MANAGEMENT_1, 0);
 
 	udelay(dev->reset_delay_after);
 

@@ -88,6 +88,7 @@ struct ksz_device {
 	int reset_gpio;
 	int reset_delay_after;
 	int reset_delay_hold;
+	int reset_val;
 
 	/* chip specific data */
 	u32 chip_id;
@@ -209,6 +210,7 @@ struct ksz_dev_ops {
 };
 
 struct ksz_device *ksz_switch_alloc(struct device *base);
+int ksz_switch_preinit(struct ksz_device *dev);
 int ksz_switch_register(struct ksz_device *dev,
 			const struct ksz_dev_ops *ops,
 			const struct ksz_tag_ops *tag_ops);
