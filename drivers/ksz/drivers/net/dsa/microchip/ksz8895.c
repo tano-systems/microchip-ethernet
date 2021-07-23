@@ -1517,14 +1517,38 @@ static const struct ksz_dev_ops ksz8895_dev_ops = {
 	.get_port_enable = ksz8895_get_port_enable,
 };
 
+static int ksz8895_get_len(struct ksz_device *dev)
+{
+	int len = 1;
+	return len;
+}
+
+static int ksz8895_get_tag(struct ksz_device *dev, u8 *tag, int *port)
+{
+	int len = 1;
+	*port = tag[0] & 3;
+	return len;
+}
+
+#define KSZ8895_TAIL_TAG_OVERRIDE	BIT(6)
+#define KSZ8895_TAIL_TAG_LOOKUP		BIT(7)
+
 static void ksz8895_set_tag(struct ksz_device *dev, void *ptr, u8 *addr, int p)
 {
 	u8 *tag = (u8 *)ptr;
+	u8 val;
 
-	*tag = 1 << p;
+	val = (1 << p); /* Port */
+
+	if (is_link_local_ether_addr(addr))
+		val |= KSZ8895_TAIL_TAG_OVERRIDE; /* Anyhow send packets to specified port in bits [3:0] */
+
+	*tag = val;
 }
 
 static const struct ksz_tag_ops ksz8895_tag_ops = {
+	.get_len = ksz8895_get_len,
+	.get_tag = ksz8895_get_tag,
 	.set_tag = ksz8895_set_tag,
 };
 
