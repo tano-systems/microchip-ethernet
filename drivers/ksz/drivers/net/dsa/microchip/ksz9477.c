@@ -412,6 +412,14 @@ static void ksz9477_cfg_port_member(struct ksz_device *dev, int port,
 	dev->ports[port].member = member;
 }
 
+static const char *const br_port_state_names[] = {
+	[BR_STATE_DISABLED]   = "disabled",
+	[BR_STATE_LISTENING]  = "listening",
+	[BR_STATE_LEARNING]   = "learning",
+	[BR_STATE_FORWARDING] = "forwarding",
+	[BR_STATE_BLOCKING]   = "blocking",
+};
+
 static void ksz9477_port_stp_state_set(struct dsa_switch *ds, int port,
 				       u8 state)
 {
@@ -438,9 +446,13 @@ static void ksz9477_port_stp_state_set(struct dsa_switch *ds, int port,
 		data |= PORT_LEARN_DISABLE;
 		break;
 	default:
-		dev_err(ds->dev, "invalid STP state: %d\n", state);
+		dev_err(ds->dev, "port %d: invalid STP state: %d\n", port, state);
 		return;
 	}
+
+	dev_dbg(dev->dev, "%s: port %d: new STP state %s, brdev = %p\n",
+		__FUNCTION__, port, br_port_state_names[state],
+		dsa_to_port(ds, port)->bridge_dev);
 
 	/* Always disable learning for non-bridged ports */
 	if (!p->bridged)
@@ -2249,10 +2261,17 @@ static void ksz9477_set_tag(struct ksz_device *dev, void *ptr, u8 *addr, int p)
 		*timestamp = 0;
 		ptr = timestamp + 1;
 	}
+
 	if (dev->features & IS_9893) {
 		u8 *tag = (u8 *)ptr;
+		u8 val;
 
-		*tag = BIT(p);
+		val = BIT(p);
+
+		if (is_link_local_ether_addr(addr))
+			val |= KSZ9477_TAIL_TAG_OVERRIDE;
+
+		*tag = val;
 	} else {
 		__be16 *tag = (__be16 *)ptr;
 		u16 val;
