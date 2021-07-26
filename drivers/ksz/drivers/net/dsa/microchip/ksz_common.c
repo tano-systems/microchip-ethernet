@@ -26,6 +26,30 @@
 
 #include "ksz_priv.h"
 
+void ksz_port_fast_age(struct dsa_switch *ds, int port);
+
+void ksz_port_flush_br_fdb(struct dsa_switch *ds, int port)
+{
+	int i;
+	struct ksz_device *dev = ds->priv;
+	struct net_device *br;
+
+	if (!dev->ports[port].bridged)
+		return;
+
+	br = dsa_to_port(ds, port)->bridge_dev;
+
+	for (i = 0; i < dev->mib_port_cnt; i++) {
+		if (!dev->ports[port].bridged)
+			continue;
+
+		if (dsa_to_port(ds, i)->bridge_dev != br)
+			continue;
+
+		ksz_port_fast_age(ds, i);
+	}
+}
+
 u8 ksz_port_based_vlan_mask(struct dsa_switch *ds, int port)
 {
 	struct ksz_device *dev = ds->priv;

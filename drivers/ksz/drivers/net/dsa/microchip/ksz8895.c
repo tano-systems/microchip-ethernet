@@ -726,6 +726,7 @@ static void ksz8895_port_stp_state_set(struct dsa_switch *ds, int port,
 	struct ksz_device *dev = ds->priv;
 	struct ksz_port *p = &dev->ports[port];
 	u8 data;
+	u8 flush_br_fdb = 0;
 
 	ksz_pread8(dev, port, P_STP_CTRL, &data);
 	data &= ~(PORT_TX_ENABLE | PORT_RX_ENABLE | PORT_LEARN_DISABLE);
@@ -738,6 +739,8 @@ static void ksz8895_port_stp_state_set(struct dsa_switch *ds, int port,
 		data |= PORT_LEARN_DISABLE;
 		break;
 	case BR_STATE_LEARNING:
+		if (p->bridged && (p->stp_state == BR_STATE_BLOCKING))
+			flush_br_fdb = 1;
 		break;
 	case BR_STATE_FORWARDING:
 		data |= (PORT_TX_ENABLE | PORT_RX_ENABLE);
@@ -772,6 +775,9 @@ static void ksz8895_port_stp_state_set(struct dsa_switch *ds, int port,
 	 * should be called to modify port forwarding behavior.
 	 */
 	ksz_port_based_vlan_update(ds);
+
+	if (flush_br_fdb)
+		ksz_port_flush_br_fdb(ds, port);
 }
 
 static void ksz8895_flush_dyn_mac_table(struct ksz_device *dev, int port)
