@@ -98,7 +98,7 @@ static void ksz8895_set_prio_queue(struct ksz_device *dev, int port, int queue)
 
 	/* Default is port based for egress rate limit. */
 	if (queue != PORT_QUEUE_SPLIT_1)
-		ksz_cfg(dev, REG_SW_CTRL_19, SW_OUT_RATE_LIMIT_QUEUE_BASED,
+		ksz_cfg8(dev, REG_SW_CTRL_19, SW_OUT_RATE_LIMIT_QUEUE_BASED,
 			true);
 }
 
@@ -803,7 +803,7 @@ static void ksz8895_flush_dyn_mac_table(struct ksz_device *dev, int port)
 			ksz_pwrite8(dev, index, P_STP_CTRL,
 				    learn[index] | PORT_LEARN_DISABLE);
 	}
-	ksz_cfg(dev, S_FLUSH_TABLE_CTRL, SW_FLUSH_DYN_MAC_TABLE, true);
+	ksz_cfg8(dev, S_FLUSH_TABLE_CTRL, SW_FLUSH_DYN_MAC_TABLE, true);
 	for (index = first; index < cnt; index++) {
 		if (!(learn[index] & PORT_LEARN_DISABLE))
 			ksz_pwrite8(dev, index, P_STP_CTRL, learn[index]);
@@ -822,8 +822,8 @@ static int ksz8895_port_vlan_filtering(struct dsa_switch *ds, int port,
 		dev->vlan_ports &= ~(1 << port);
 	if ((flag && !vlan_ports) ||
 	    (!flag && !dev->vlan_ports && dev->vlan_up)) {
-		ksz_cfg(dev, S_MIRROR_CTRL, SW_VLAN_ENABLE, flag);
-		ksz_port_cfg(dev, dev->cpu_port, P_TAG_CTRL, PORT_INSERT_TAG,
+		ksz_cfg8(dev, S_MIRROR_CTRL, SW_VLAN_ENABLE, flag);
+		ksz_port_cfg8(dev, dev->cpu_port, P_TAG_CTRL, PORT_INSERT_TAG,
 			     false);
 		dev->vlan_up = flag;
 	}
@@ -847,7 +847,7 @@ static void ksz8895_port_vlan_add(struct dsa_switch *ds, int port,
 	if (!dev->vlan_up)
 		return;
 
-	ksz_port_cfg(dev, port, P_TAG_CTRL, PORT_REMOVE_TAG, untagged);
+	ksz_port_cfg8(dev, port, P_TAG_CTRL, PORT_REMOVE_TAG, untagged);
 
 	for (vid = vlan->vid_begin; vid <= vlan->vid_end; vid++) {
 
@@ -883,7 +883,7 @@ static void ksz8895_port_vlan_add(struct dsa_switch *ds, int port,
 		/* Switch may use lookup to forward unicast frame. */
 		dev->dev_ops->flush_dyn_mac_table(dev, port);
 		if (!dev->vid_ports)
-			ksz_port_cfg(dev, dev->cpu_port, P_TAG_CTRL,
+			ksz_port_cfg8(dev, dev->cpu_port, P_TAG_CTRL,
 				     PORT_INSERT_TAG, true);
 		dev->vid_ports |= (1 << port);
 	}
@@ -937,7 +937,7 @@ static int ksz8895_port_vlan_del(struct dsa_switch *ds, int port,
 		dev->dev_ops->flush_dyn_mac_table(dev, port);
 		dev->vid_ports &= ~(1 << port);
 		if (!dev->vid_ports)
-			ksz_port_cfg(dev, dev->cpu_port, P_TAG_CTRL,
+			ksz_port_cfg8(dev, dev->cpu_port, P_TAG_CTRL,
 				     PORT_INSERT_TAG, false);
 	}
 
@@ -951,18 +951,18 @@ static int ksz8895_port_mirror_add(struct dsa_switch *ds, int port,
 	struct ksz_device *dev = ds->priv;
 
 	if (ingress) {
-		ksz_port_cfg(dev, port, P_MIRROR_CTRL, PORT_MIRROR_RX, true);
+		ksz_port_cfg8(dev, port, P_MIRROR_CTRL, PORT_MIRROR_RX, true);
 		dev->mirror_rx |= (1 << port);
 	} else {
-		ksz_port_cfg(dev, port, P_MIRROR_CTRL, PORT_MIRROR_TX, true);
+		ksz_port_cfg8(dev, port, P_MIRROR_CTRL, PORT_MIRROR_TX, true);
 		dev->mirror_tx |= (1 << port);
 	}
 
-	ksz_port_cfg(dev, port, P_MIRROR_CTRL, PORT_MIRROR_SNIFFER, false);
+	ksz_port_cfg8(dev, port, P_MIRROR_CTRL, PORT_MIRROR_SNIFFER, false);
 
 	/* configure mirror port */
 	if (dev->mirror_rx || dev->mirror_tx)
-		ksz_port_cfg(dev, mirror->to_local_port, P_MIRROR_CTRL,
+		ksz_port_cfg8(dev, mirror->to_local_port, P_MIRROR_CTRL,
 			     PORT_MIRROR_SNIFFER, true);
 
 	return 0;
@@ -975,17 +975,17 @@ static void ksz8895_port_mirror_del(struct dsa_switch *ds, int port,
 	u8 data;
 
 	if (mirror->ingress) {
-		ksz_port_cfg(dev, port, P_MIRROR_CTRL, PORT_MIRROR_RX, false);
+		ksz_port_cfg8(dev, port, P_MIRROR_CTRL, PORT_MIRROR_RX, false);
 		dev->mirror_rx &= ~(1 << port);
 	} else {
-		ksz_port_cfg(dev, port, P_MIRROR_CTRL, PORT_MIRROR_TX, false);
+		ksz_port_cfg8(dev, port, P_MIRROR_CTRL, PORT_MIRROR_TX, false);
 		dev->mirror_tx &= ~(1 << port);
 	}
 
 	ksz_pread8(dev, port, P_MIRROR_CTRL, &data);
 
 	if (!dev->mirror_rx && !dev->mirror_tx)
-		ksz_port_cfg(dev, mirror->to_local_port, P_MIRROR_CTRL,
+		ksz_port_cfg8(dev, mirror->to_local_port, P_MIRROR_CTRL,
 			     PORT_MIRROR_SNIFFER, false);
 }
 
@@ -1012,13 +1012,13 @@ static void ksz8895_port_setup(struct ksz_device *dev, int port, bool cpu_port)
 	ksz8895_set_prio_queue(dev, port, 4);
 
 	/* disable DiffServ priority */
-	ksz_port_cfg(dev, port, P_PRIO_CTRL, PORT_DIFFSERV_ENABLE, false);
+	ksz_port_cfg8(dev, port, P_PRIO_CTRL, PORT_DIFFSERV_ENABLE, false);
 
 	/* replace priority */
-	ksz_port_cfg(dev, port, P_802_1P_CTRL, PORT_802_1P_REMAPPING, false);
+	ksz_port_cfg8(dev, port, P_802_1P_CTRL, PORT_802_1P_REMAPPING, false);
 
 	/* enable 802.1p priority */
-	ksz_port_cfg(dev, port, P_PRIO_CTRL, PORT_802_1P_ENABLE, true);
+	ksz_port_cfg8(dev, port, P_PRIO_CTRL, PORT_802_1P_ENABLE, true);
 
 	if (cpu_port) {
 		member = dev->port_mask;
@@ -1042,7 +1042,7 @@ static void ksz8895_config_cpu_port(struct dsa_switch *ds)
 	int i;
 	u8 remote;
 
-	ksz_cfg(dev, S_TAIL_TAG_CTRL, SW_TAIL_TAG_ENABLE, true);
+	ksz_cfg8(dev, S_TAIL_TAG_CTRL, SW_TAIL_TAG_ENABLE, true);
 
 	p = &dev->ports[dev->cpu_port];
 	p->vid_member = dev->port_mask;
@@ -1079,10 +1079,10 @@ static void ksz8895_config_cpu_port(struct dsa_switch *ds)
 		if (!p->on)
 			continue;
 		if (p->fiber)
-			ksz_port_cfg(dev, i, P_STP_CTRL, PORT_FORCE_FLOW_CTRL,
+			ksz_port_cfg8(dev, i, P_STP_CTRL, PORT_FORCE_FLOW_CTRL,
 				     true);
 		else
-			ksz_port_cfg(dev, i, P_STP_CTRL, PORT_FORCE_FLOW_CTRL,
+			ksz_port_cfg8(dev, i, P_STP_CTRL, PORT_FORCE_FLOW_CTRL,
 				     false);
 	}
 }
@@ -1108,10 +1108,10 @@ static int ksz8895_setup(struct dsa_switch *ds)
 		return ret;
 	}
 
-	ksz_cfg(dev, S_REPLACE_VID_CTRL, SW_FLOW_CTRL, true);
+	ksz_cfg8(dev, S_REPLACE_VID_CTRL, SW_FLOW_CTRL, true);
 
 	/* Enable automatic fast aging when link changed detected. */
-	ksz_cfg(dev, S_LINK_AGING_CTRL, SW_LINK_AUTO_AGING, true);
+	ksz_cfg8(dev, S_LINK_AGING_CTRL, SW_LINK_AUTO_AGING, true);
 
 	ksz_read8(dev, REG_SW_CTRL_1, &data8);
 
@@ -1130,11 +1130,11 @@ static int ksz8895_setup(struct dsa_switch *ds)
 
 	ksz8895_config_cpu_port(ds);
 
-	ksz_cfg(dev, REG_SW_CTRL_2, MULTICAST_STORM_DISABLE, true);
+	ksz_cfg8(dev, REG_SW_CTRL_2, MULTICAST_STORM_DISABLE, true);
 
-	ksz_cfg(dev, S_REPLACE_VID_CTRL, SW_REPLACE_VID, false);
+	ksz_cfg8(dev, S_REPLACE_VID_CTRL, SW_REPLACE_VID, false);
 
-	ksz_cfg(dev, S_MIRROR_CTRL, SW_MIRROR_RX_TX, false);
+	ksz_cfg8(dev, S_MIRROR_CTRL, SW_MIRROR_RX_TX, false);
 
 	/* set broadcast storm protection 10% rate */
 	data8 = BROADCAST_STORM_PROT_RATE;
@@ -1412,7 +1412,7 @@ static void ksz8895_get_broadcast_storm(struct ksz_device *dev, u8 *rate_percent
 
 static void ksz8895_cfg_broadcast_multicast_storm(struct ksz_device *dev, bool enable)
 {
-	ksz_cfg(dev, REG_SW_CTRL_2, MULTICAST_STORM_DISABLE, !enable);
+	ksz_cfg8(dev, REG_SW_CTRL_2, MULTICAST_STORM_DISABLE, !enable);
 }
 
 static void ksz8895_get_broadcast_multicast_storm(struct ksz_device *dev, bool *enabled)
@@ -1424,7 +1424,7 @@ static void ksz8895_get_broadcast_multicast_storm(struct ksz_device *dev, bool *
 
 static void ksz8895_cfg_port_broadcast_storm(struct ksz_device *dev, int port, bool enable)
 {
-	ksz_port_cfg(dev, port, P_BCAST_STORM_CTRL, PORT_BROADCAST_STORM, enable);
+	ksz_port_cfg8(dev, port, P_BCAST_STORM_CTRL, PORT_BROADCAST_STORM, enable);
 }
 
 static void ksz8895_get_port_broadcast_storm(struct ksz_device *dev, int port, bool *enabled)
