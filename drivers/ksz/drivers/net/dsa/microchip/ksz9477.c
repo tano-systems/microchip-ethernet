@@ -766,6 +766,9 @@ static int ksz9477_port_fdb_add(struct dsa_switch *ds, int port,
 	int ret = 0;
 	u16 fid = __ksz9477_get_fid(vid);
 
+	dev_dbg(dev->dev, "%s: port %d: Adding %pM, vid %u\n",
+		__FUNCTION__, port, addr, vid);
+
 	mutex_lock(&dev->alu_mutex);
 	mutex_lock(&dev->reg_lock);
 
@@ -831,6 +834,9 @@ static int ksz9477_port_fdb_del(struct dsa_switch *ds, int port,
 	u32 mask = 0;
 	int ret = 0;
 	u16 fid = __ksz9477_get_fid(vid);
+
+	dev_dbg(dev->dev, "%s: port %d: Deleting %pM, vid %u\n",
+		__FUNCTION__, port, addr, vid);
 
 	mutex_lock(&dev->alu_mutex);
 	mutex_lock(&dev->reg_lock);
@@ -934,6 +940,8 @@ static int ksz9477_port_fdb_dump(struct dsa_switch *ds, int port,
 	struct alu_struct alu;
 	int timeout;
 	u32 cnt = 0;
+
+	dev_dbg(dev->dev, "%s: port %d: Dumping FDB\n", __FUNCTION__, port);
 
 	mutex_lock(&dev->alu_mutex);
 	mutex_lock(&dev->reg_lock);
