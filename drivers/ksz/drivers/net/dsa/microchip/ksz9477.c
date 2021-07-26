@@ -2253,6 +2253,9 @@ static int ksz9477_get_tag(struct ksz_device *dev, u8 *tag, int *port)
 #define KSZ9477_TAIL_TAG_OVERRIDE	BIT(9)
 #define KSZ9477_TAIL_TAG_LOOKUP		BIT(10)
 
+#define KSZ9893_TAIL_TAG_OVERRIDE	BIT(5)
+#define KSZ9893_TAIL_TAG_LOOKUP		BIT(6)
+
 static void ksz9477_set_tag(struct ksz_device *dev, void *ptr, u8 *addr, int p)
 {
 	if (dev->overrides & PTP_TAG) {
@@ -2269,7 +2272,7 @@ static void ksz9477_set_tag(struct ksz_device *dev, void *ptr, u8 *addr, int p)
 		val = BIT(p);
 
 		if (is_link_local_ether_addr(addr))
-			val |= KSZ9477_TAIL_TAG_OVERRIDE;
+			val |= KSZ9893_TAIL_TAG_OVERRIDE;
 
 		*tag = val;
 	} else {
