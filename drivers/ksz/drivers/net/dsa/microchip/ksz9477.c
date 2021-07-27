@@ -209,6 +209,55 @@ static void ksz9477_write_table(struct ksz_device *dev, u32 *table)
 	ksz_write32(dev, REG_SW_ALU_VAL_D, table[3]);
 }
 
+#define KSZ9477_AGEING_COUNT_MIN   1
+#define KSZ9477_AGEING_COUNT_MAX   7
+#define KSZ9477_AGEING_PERIOD_MIN  1
+#define KSZ9477_AGEING_PERIOD_MAX  255
+
+#define KSZ9477_AGEING_TIME_MIN_SECONDS \
+	(KSZ9477_AGEING_COUNT_MIN * KSZ9477_AGEING_PERIOD_MIN)
+
+#define KSZ9477_AGEING_TIME_MAX_SECONDS \
+	(KSZ9477_AGEING_COUNT_MAX * KSZ9477_AGEING_PERIOD_MAX)
+
+static int ksz9477_set_ageing_time(struct dsa_switch *ds, unsigned int msecs)
+{
+	u8 data8;
+
+	unsigned int ageing_time = msecs / 1000;
+	unsigned int ageing_count;
+	unsigned int ageing_period;
+
+	struct ksz_device *dev = ds->priv;
+
+	if (ageing_time < KSZ9477_AGEING_TIME_MIN_SECONDS)
+		ageing_time = KSZ9477_AGEING_TIME_MIN_SECONDS;
+	else if (ageing_time > KSZ9477_AGEING_TIME_MAX_SECONDS)
+		ageing_time = KSZ9477_AGEING_TIME_MAX_SECONDS;
+
+	for (ageing_count = KSZ9477_AGEING_COUNT_MIN;
+	     ageing_count <= KSZ9477_AGEING_COUNT_MAX;
+	     ageing_count++) {
+		ageing_period = ageing_time / ageing_count;
+
+		if (ageing_period > KSZ9477_AGEING_PERIOD_MAX)
+			continue;
+
+		if ((ageing_count * ageing_period) >= ageing_time)
+			break;
+	}
+
+	ksz_read8(dev, REG_SW_LUE_CTRL_0, &data8);
+	data8 &= ~(SW_AGE_CNT_M << SW_AGE_CNT_S);
+	data8 |= (ageing_count << SW_AGE_CNT_S);
+	ksz_write8(dev, REG_SW_LUE_CTRL_0, data8);
+
+	data8 = ageing_period;
+	ksz_write8(dev, REG_SW_LUE_CTRL_3, data8);
+
+	return 0;
+}
+
 static int ksz9477_reset_switch(struct ksz_device *dev)
 {
 	u8 data8;
@@ -1723,6 +1772,7 @@ static struct dsa_switch_ops ksz9477_switch_ops = {
 	.get_strings		= ksz9477_get_strings,
 	.get_ethtool_stats	= ksz_get_ethtool_stats,
 	.get_sset_count		= ksz_sset_count,
+	.set_ageing_time    = ksz9477_set_ageing_time,
 	.port_bridge_join	= ksz_port_bridge_join,
 	.port_bridge_leave	= ksz_port_bridge_leave,
 	.port_stp_state_set	= ksz9477_port_stp_state_set,
