@@ -22,6 +22,8 @@
 #include <linux/of_net.h>
 #include <linux/of_device.h>
 
+#include <../net/bridge/br_private.h>
+
 #include "ksz_priv.h"
 
 u8 ksz_port_based_vlan_mask(struct dsa_switch *ds, int port)
@@ -290,9 +292,30 @@ void ksz_port_bridge_leave(struct dsa_switch *ds, int port,
 }
 EXPORT_SYMBOL_GPL(ksz_port_bridge_leave);
 
+static struct net_bridge_port *__ksz_netdev_br_port(struct net_device *netdev)
+{
+	struct net_bridge_port *p = NULL;
+
+	if (netdev && br_port_exists(netdev))
+		p = br_port_get_rtnl(netdev);
+
+	return p;
+}
+
 void ksz_port_fast_age(struct dsa_switch *ds, int port)
 {
 	struct ksz_device *dev = ds->priv;
+	struct net_bridge_port *br_port;
+
+	dev_dbg(dev->dev, "%s: port %d: fast aging\n", __FUNCTION__, port);
+
+	br_port = __ksz_netdev_br_port(dsa_to_port(ds, port)->slave);
+	if (br_port) {
+		if (port < dev->mib_port_cnt)
+			br_fdb_delete_by_port(br_port->br, br_port, 0, 0);
+		else
+			br_fdb_flush(br_port->br);
+	}
 
 	dev->dev_ops->flush_dyn_mac_table(dev, port);
 }
