@@ -25,6 +25,7 @@
 	.reg_stride		= (width),				\
 	.reg_format_endian	= REGMAP_ENDIAN_BIG,			\
 	.val_format_endian	= REGMAP_ENDIAN_BIG,			\
+	.disable_locking = true, \
 }
 
 static const struct regmap_config ksz9477_regmap_cfg[] = {

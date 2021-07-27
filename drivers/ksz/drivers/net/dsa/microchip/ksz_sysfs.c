@@ -75,8 +75,11 @@ static ssize_t ksz_sysfs_registers_read(
 	reg = off;
 	if (swdev->dev_ops->get)
 		i = swdev->dev_ops->get(swdev, reg, buf, count);
-	else
+	else {
+		mutex_lock(&swdev->reg_lock);
 		i = regmap_bulk_read(swdev->regmap[0], reg, buf, count);
+		mutex_unlock(&swdev->reg_lock);
+	}
 	i = count;
 	return i;
 }
@@ -106,8 +109,11 @@ static ssize_t ksz_sysfs_registers_write(
 	reg = off;
 	if (swdev->dev_ops->set)
 		i = swdev->dev_ops->set(swdev, reg, buf, count);
-	else
+	else {
+		mutex_lock(&swdev->reg_lock);
 		i = regmap_bulk_write(swdev->regmap[0], reg, buf, count);
+		mutex_unlock(&swdev->reg_lock);
+	}
 	i = count;
 	return i;
 }

@@ -74,7 +74,9 @@ struct ksz_device {
 	struct ksz_sysfs *sysfs;
 #endif
 
-	struct mutex stats_mutex;	/* status access */
+	/* This mutex protects the access to the switch registers */
+	struct mutex reg_lock;
+
 	struct mutex alu_mutex;		/* ALU access */
 	struct mutex vlan_mutex;	/* vlan access */
 	const struct ksz_io_ops *ops;

@@ -779,7 +779,7 @@ int ksz_switch_preinit(struct ksz_device *dev)
 	if (dev->pdata)
 		dev->chip_id = dev->pdata->chip_id;
 
-	mutex_init(&dev->stats_mutex);
+	mutex_init(&dev->reg_lock);
 	mutex_init(&dev->alu_mutex);
 	mutex_init(&dev->vlan_mutex);
 

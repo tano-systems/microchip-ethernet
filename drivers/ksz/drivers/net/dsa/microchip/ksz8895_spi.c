@@ -33,6 +33,7 @@
 	.write_flag_mask	= KS_SPIOP_WR,				\
 	.reg_format_endian	= REGMAP_ENDIAN_BIG,			\
 	.val_format_endian	= REGMAP_ENDIAN_BIG,			\
+	.disable_locking = true, \
 }
 
 static const struct regmap_config ksz8895_regmap_cfg[] = {
