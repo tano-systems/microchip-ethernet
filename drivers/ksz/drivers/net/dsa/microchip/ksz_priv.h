@@ -178,6 +178,7 @@ struct ksz_dev_ops {
 				struct alu_struct *alu);
 	int (*ins_sta_mac_table)(struct ksz_device *dev,
 				struct alu_struct *alu, u16 *addr);
+	int (*del_sta_mac_table)(struct ksz_device *dev, struct alu_struct *alu);
 	void (*r_mib_cnt)(struct ksz_device *dev, int port, u16 addr,
 			  u64 *cnt);
 	void (*r_mib_pkt)(struct ksz_device *dev, int port, u16 addr,

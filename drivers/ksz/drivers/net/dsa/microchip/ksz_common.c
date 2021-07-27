@@ -296,6 +296,22 @@ int ksz_port_bridge_join(struct dsa_switch *ds, int port,
 	struct ksz_device *dev = ds->priv;
 	dev->ports[port].bridged = 1;
 
+	if (dev->dev_ops->ins_sta_mac_table) {
+		struct alu_struct alu = { 0 };
+		ether_addr_copy(alu.mac, dsa_to_port(ds, port)->slave->dev_addr);
+
+		alu.is_static = true;
+		alu.is_override = false;
+		alu.port_forward = dev->host_mask;
+
+		if (dev->dev_ops->ins_sta_mac_table(dev, &alu, NULL)) {
+			dev_err(dev->dev,
+				"Failed to add %02x:%02x:%02x:%02x:%02x:%02x to static MAC table\n",
+				alu.mac[0], alu.mac[1], alu.mac[2],
+				alu.mac[3], alu.mac[4], alu.mac[5]);
+		}
+	}
+
 	/* port_stp_state_set() will be called after to put the port in
 	 * appropriate state so there is no need to do anything.
 	 */
@@ -309,6 +325,18 @@ void ksz_port_bridge_leave(struct dsa_switch *ds, int port,
 {
 	struct ksz_device *dev = ds->priv;
 	dev->ports[port].bridged = 0;
+
+	if (dev->dev_ops->del_sta_mac_table) {
+		struct alu_struct alu = { 0 };
+		ether_addr_copy(alu.mac, dsa_to_port(ds, port)->slave->dev_addr);
+
+		if (dev->dev_ops->del_sta_mac_table(dev, &alu)) {
+			dev_err(dev->dev,
+				"Failed to remove %02x:%02x:%02x:%02x:%02x:%02x from static MAC table\n",
+				alu.mac[0], alu.mac[1], alu.mac[2],
+				alu.mac[3], alu.mac[4], alu.mac[5]);
+		}
+	}
 
 	/* port_stp_state_set() will be called after to put the port in
 	 * forwarding state so there is no need to do anything.

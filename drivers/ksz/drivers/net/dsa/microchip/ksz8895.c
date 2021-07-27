@@ -391,6 +391,13 @@ static int ksz9985_ins_sta_mac_table(struct ksz_device *dev,
 	return 0;
 }
 
+static int ksz9985_del_sta_mac_table(struct ksz_device *dev,
+				struct alu_struct *alu)
+{
+	// TODO:
+	return 0;
+}
+
 static void ksz8895_from_vlan(u16 vlan, u8 *fid, u8 *member, u8 *valid)
 {
 	*fid = vlan & VLAN_TABLE_FID;
@@ -1617,6 +1624,7 @@ static const struct ksz_dev_ops ksz8895_dev_ops = {
 	.r_sta_mac_table = ksz8895_r_sta_mac_table,
 	.w_sta_mac_table = ksz8895_w_sta_mac_table,
 	.ins_sta_mac_table = ksz8895_ins_sta_mac_table,
+	.del_sta_mac_table = ksz8895_del_sta_mac_table,
 	.r_mib_cnt = ksz8895_r_mib_cnt,
 	.r_mib_pkt = ksz8895_r_mib_pkt,
 	.port_init_cnt = ksz8895_port_init_cnt,

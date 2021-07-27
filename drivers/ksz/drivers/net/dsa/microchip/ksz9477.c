@@ -1198,6 +1198,16 @@ exit:
 	return ret;
 }
 
+static int ksz9477_del_sta_mac_table(struct ksz_device *dev, struct alu_struct *alu)
+{
+	/* Mark for deletion */
+	alu->is_static = 0;
+	alu->port_forward = 0;
+	alu->is_override = 0;
+
+	return ksz9477_ins_sta_mac_table(dev, alu, NULL);
+}
+
 static int ksz9477_port_mirror_add(struct dsa_switch *ds, int port,
 				   struct dsa_mall_mirror_tc_entry *mirror,
 				   bool ingress)
@@ -2232,6 +2242,7 @@ static const struct ksz_dev_ops ksz9477_dev_ops = {
 	.r_sta_mac_table = ksz9477_r_sta_mac_table,
 	.w_sta_mac_table = ksz9477_w_sta_mac_table,
 	.ins_sta_mac_table = ksz9477_ins_sta_mac_table,
+	.del_sta_mac_table = ksz9477_del_sta_mac_table,
 
 	/* Port STP states */
 	.get_port_stp_state = ksz9477_get_port_stp_state,
