@@ -131,5 +131,7 @@ static struct spi_driver ksz9477_spi_driver = {
 module_spi_driver(ksz9477_spi_driver);
 
 MODULE_AUTHOR("Woojung Huh <Woojung.Huh@microchip.com>");
+MODULE_AUTHOR("Anton Kikin <a.kikin@tano-systems.com>");
 MODULE_DESCRIPTION("Microchip KSZ9477 Series Switch SPI Driver");
 MODULE_LICENSE("GPL v2");
+MODULE_VERSION(KSZ_DRIVER_VERSION);

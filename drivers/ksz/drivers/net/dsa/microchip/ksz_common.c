@@ -797,7 +797,8 @@ int ksz_switch_preinit(struct ksz_device *dev)
 {
 	int ret;
 
-	dev_info(dev->dev, "Initializing switch\n");
+	dev_info(dev->dev,
+		"Microchip KSZ switch driver version " KSZ_DRIVER_VERSION "\n");
 
 	dev->reset_gpio = -1;
 	dev->reset_delay_hold = 50000;
@@ -890,5 +891,7 @@ void ksz_switch_remove(struct ksz_device *dev)
 EXPORT_SYMBOL(ksz_switch_remove);
 
 MODULE_AUTHOR("Woojung Huh <Woojung.Huh@microchip.com>");
+MODULE_AUTHOR("Anton Kikin <a.kikin@tano-systems.com>");
 MODULE_DESCRIPTION("Microchip KSZ Series Switch DSA Driver");
 MODULE_LICENSE("GPL");
+MODULE_VERSION(KSZ_DRIVER_VERSION);

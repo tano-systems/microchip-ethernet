@@ -267,6 +267,7 @@ enum
 	/* Global switch attributes */
 	KSZ_SYSFS_SW_ATTR_CHIP_ID,
 	KSZ_SYSFS_SW_ATTR_CHIP_NAME,
+	KSZ_SYSFS_SW_ATTR_VERSION,
 	KSZ_SYSFS_SW_ATTR_NUM_VLANS,
 	KSZ_SYSFS_SW_ATTR_NUM_ALUS,
 	KSZ_SYSFS_SW_ATTR_NUM_STATICS,
@@ -301,6 +302,7 @@ struct ksz_attributes
 	/* Global switch attributes */
 	int sw_chip_id;
 	int sw_chip_name;
+	int sw_version;
 	int sw_num_vlans;
 	int sw_num_alus;
 	int sw_num_statics;
@@ -333,6 +335,7 @@ struct ksz_attributes
 /* Global switch attributes */
 KSZ_SYSFS_SW_RO_ENTRY(sw_chip_id, false);
 KSZ_SYSFS_SW_RO_ENTRY(sw_chip_name, false);
+KSZ_SYSFS_SW_RO_ENTRY(sw_version, false);
 KSZ_SYSFS_SW_RO_ENTRY(sw_num_vlans, false);
 KSZ_SYSFS_SW_RO_ENTRY(sw_num_alus, false);
 KSZ_SYSFS_SW_RO_ENTRY(sw_num_statics, false);
@@ -346,6 +349,7 @@ KSZ_SYSFS_SW_RW_ENTRY(sw_mtu, false);
 static const struct attribute *ksz_attrs[] = {
 	&ksz_attr_sw_chip_id.attr,
 	&ksz_attr_sw_chip_name.attr,
+	&ksz_attr_sw_version.attr,
 	&ksz_attr_sw_num_vlans.attr,
 	&ksz_attr_sw_num_alus.attr,
 	&ksz_attr_sw_num_statics.attr,
@@ -406,6 +410,10 @@ static ssize_t ksz_sysfs_sw_attr_read(struct ksz_device *swdev,
 
 		case KSZ_SYSFS_SW_ATTR_CHIP_NAME:
 			len += sprintf(buf + len, "%s\n", swdev->name);
+			break;
+
+		case KSZ_SYSFS_SW_ATTR_VERSION:
+			len += sprintf(buf + len, "%s\n", KSZ_DRIVER_VERSION);
 			break;
 
 		case KSZ_SYSFS_SW_ATTR_NUM_VLANS:
@@ -796,3 +804,4 @@ EXPORT_SYMBOL(ksz_sysfs_remove);
 MODULE_AUTHOR("Anton Kikin <a.kikin@tano-systems.com>");
 MODULE_DESCRIPTION("Microchip KSZ Series Switch DSA Driver sysfs interface");
 MODULE_LICENSE("GPL");
+MODULE_VERSION(KSZ_DRIVER_VERSION);

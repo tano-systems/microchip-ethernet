@@ -16,6 +16,8 @@
 #include <linux/phy.h>
 #include <linux/regmap.h>
 
+#include "ksz_version.h"
+
 struct ksz_device;
 
 struct ksz_tag_ops {

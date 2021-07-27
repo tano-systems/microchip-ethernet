@@ -122,5 +122,7 @@ static struct i2c_driver ksz9477_i2c_driver = {
 module_i2c_driver(ksz9477_i2c_driver);
 
 MODULE_AUTHOR("Tristram Ha <Tristram.Ha@microchip.com>");
+MODULE_AUTHOR("Anton Kikin <a.kikin@tano-systems.com>");
 MODULE_DESCRIPTION("Microchip KSZ9477 Series Switch I2C Driver");
 MODULE_LICENSE("GPL v2");
+MODULE_VERSION(KSZ_DRIVER_VERSION);

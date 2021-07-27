@@ -1691,5 +1691,7 @@ int ksz8895_switch_register(struct ksz_device *dev)
 EXPORT_SYMBOL(ksz8895_switch_register);
 
 MODULE_AUTHOR("Tristram Ha <Tristram.Ha@microchip.com>");
+MODULE_AUTHOR("Anton Kikin <a.kikin@tano-systems.com>");
 MODULE_DESCRIPTION("Microchip KSZ8895 Series Switch DSA Driver");
 MODULE_LICENSE("GPL v2");
+MODULE_VERSION(KSZ_DRIVER_VERSION);

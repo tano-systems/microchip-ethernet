@@ -116,5 +116,7 @@ static struct spi_driver ksz8895_spi_driver = {
 module_spi_driver(ksz8895_spi_driver);
 
 MODULE_AUTHOR("Tristram Ha <Tristram.Ha@microchip.com>");
+MODULE_AUTHOR("Anton Kikin <a.kikin@tano-systems.com>");
 MODULE_DESCRIPTION("Microchip KSZ8895 Series Switch SPI Driver");
 MODULE_LICENSE("GPL v2");
+MODULE_VERSION(KSZ_DRIVER_VERSION);
