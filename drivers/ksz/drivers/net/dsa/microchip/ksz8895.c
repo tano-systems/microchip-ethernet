@@ -384,14 +384,14 @@ static void ksz8895_w_sta_mac_table(struct ksz_device *dev, u16 addr,
 	mutex_unlock(&dev->reg_lock);
 }
 
-static int ksz9985_ins_sta_mac_table(struct ksz_device *dev,
+static int ksz8895_ins_sta_mac_table(struct ksz_device *dev,
 				struct alu_struct *alu, u16 *addr)
 {
 	// TODO:
 	return 0;
 }
 
-static int ksz9985_del_sta_mac_table(struct ksz_device *dev,
+static int ksz8895_del_sta_mac_table(struct ksz_device *dev,
 				struct alu_struct *alu)
 {
 	// TODO:
@@ -1125,7 +1125,7 @@ static void ksz8895_config_cpu_port(struct dsa_switch *ds)
 	p->on = 1;
 
 	ksz8895_port_setup(dev, dev->cpu_port, true);
-	dev->member = dev->host_mask;
+	/*dev->member = dev->host_mask;*/
 
 	for (i = 0; i < SWITCH_PORT_NUM; i++) {
 		p = &dev->ports[i];
@@ -1169,10 +1169,7 @@ static void ksz8895_config_cpu_port(struct dsa_switch *ds)
 static int ksz8895_setup(struct dsa_switch *ds)
 {
 	u8 data8;
-	u16 data16;
-	u32 value;
 	int i;
-	struct alu_struct alu;
 	struct ksz_device *dev = ds->priv;
 	int ret = 0;
 
@@ -1553,7 +1550,7 @@ static void ksz8895_get_port_broadcast_storm(struct ksz_device *dev, int port, b
 static void ksz8895_cfg_port_enable(struct ksz_device *dev, int port, bool enable)
 {
 	mutex_lock(&dev->reg_lock);
-	ksz8895_port_cfg(dev, port, REG_PORT_CTRL_6, PORT_POWER_DOWN, !enable);
+	ksz_port_cfg8(dev, port, REG_PORT_CTRL_6, PORT_POWER_DOWN, !enable);
 	mutex_unlock(&dev->reg_lock);
 }
 
