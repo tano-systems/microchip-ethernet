@@ -665,7 +665,7 @@ static int ksz_dsa_init_ports_macs(struct ksz_device *dev)
 			{
 				dev_err(dev->dev,
 					"Failed to generate unique MAC for DSA port %d [%s]\n",
-					p + 1, netdev_name(netdev));
+					p, netdev_name(netdev));
 
 				BUG();
 			}
@@ -680,13 +680,13 @@ static int ksz_dsa_init_ports_macs(struct ksz_device *dev)
 		if (ret) {
 			dev_err(dev->dev,
 				"Failed to setup MAC for port %d [%s] (%d)\n",
-				p + 1, netdev_name(netdev), ret);
+				p, netdev_name(netdev), ret);
 			break;
 		}
 		else {
 			dev_info(dev->dev,
 				"Port %d [%s] MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",
-				p + 1, netdev_name(netdev),
+				p, netdev_name(netdev),
 				addr.sa_data[0], addr.sa_data[1], addr.sa_data[2],
 				addr.sa_data[3], addr.sa_data[4], addr.sa_data[5]);
 		}
@@ -727,7 +727,7 @@ static void ksz_dsa_dump_info(struct ksz_device *dev)
 
 		dev_info(dev->dev,
 			"Port %d [%s]: %s\n",
-			p + 1,
+			p,
 			dsa_port_mask  & (1 << p) ? "DSA" :
 			cpu_port_mask  & (1 << p) ? "CPU" :
 			user_port_mask & (1 << p) ? "USER" : "Unknown",
